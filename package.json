@@ -10,7 +10,8 @@
     "scan": "node scripts/rebuild-native.js node && node scripts/scan-cli.js",
     "electron": "node scripts/rebuild-native.js electron && electron .",
     "pack": "node scripts/rebuild-native.js electron && electron-builder --dir",
-    "dist": "node scripts/build-installer.js"
+    "dist": "node scripts/build-installer.js",
+    "test": "node scripts/rebuild-native.js node && node --test"
   },
   "engines": {
     "node": ">=20"

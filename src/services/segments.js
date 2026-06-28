@@ -2,6 +2,7 @@
 
 const { getDb } = require('../db/database');
 const config = require('../config');
+const runtimePaths = require('../runtime-paths');
 const { haversine } = require('./spatial');
 const { buildFilters } = require('../api/queries');
 
@@ -167,12 +168,58 @@ function makePeriod(periodKind, key, photos) {
   };
 }
 
+/* ---- result cache ----
+ * buildSegments is O(n) over the whole catalog and gets hit up to 3x per Moments
+ * view open (rail list, then the "whole" view with photos, then a segment's
+ * photos). Memoize on (active project + catalog signature + filter key). The
+ * signature folds in photo/tag/cluster counts plus max id/mtime, so any add,
+ * remove, move, metadata edit, tag, or cluster change bumps the key — the cache
+ * can return stale data only if none of those changed, in which case the result
+ * is identical anyway. */
+let cache = { key: null, value: null };
+
+function catalogSignature(db) {
+  const r = db.prepare(`
+    SELECT
+      (SELECT COUNT(*)               FROM photos WHERE status='active' AND date_taken IS NOT NULL) n,
+      (SELECT COALESCE(MAX(id),0)    FROM photos) mid,
+      (SELECT COALESCE(MAX(mtime),0) FROM photos WHERE status='active') mm,
+      (SELECT COUNT(*) FROM photo_tags)     nt,
+      (SELECT COUNT(*) FROM photo_clusters) nc
+  `).get();
+  return `${r.n}:${r.mid}:${r.mm}:${r.nt}:${r.nc}`;
+}
+
+function cacheKey(q) {
+  const a = runtimePaths.getActive();
+  const proj = a ? a.sgDir : '(default)';
+  // Only the fields buildFilters consumes affect the result.
+  const f = {
+    country: q.country ?? null, year: q.year ?? null, month: q.month ?? null,
+    day: q.day ?? null, camera: q.camera ?? null, cluster: q.cluster ?? null,
+    tag: q.tag ?? null, tagsAll: q.tagsAll ?? null, search: q.search ?? null,
+  };
+  return proj + '|' + JSON.stringify(f);
+}
+
+/** Drop the memoized result (used by tests; production self-invalidates). */
+function _resetCache() { cache = { key: null, value: null }; }
+
 /**
  * Build the full ordered segment list (newest first). Each segment carries its
- * own `photos` array (ascending, start -> finish) for the detail view.
+ * own `photos` array (ascending, start -> finish) for the detail view. Cached;
+ * see the note above.
  */
 function buildSegments(q = {}) {
   const db = getDb();
+  const key = catalogSignature(db) + '||' + cacheKey(q);
+  if (cache.key === key) return cache.value;
+  const value = computeSegments(q, db);
+  cache = { key, value };
+  return value;
+}
+
+function computeSegments(q, db) {
   const { where, params } = buildFilters(q);
   const rows = db
     .prepare(`SELECT ${PHOTO_COLS} FROM photos WHERE ${where} ORDER BY date_taken ASC, id ASC`)
@@ -267,4 +314,4 @@ function segmentPhotos(q, id) {
   return seg ? seg.photos : null;
 }
 
-module.exports = { buildSegments, listSegments, segmentPhotos };
+module.exports = { buildSegments, listSegments, segmentPhotos, _resetCache };
