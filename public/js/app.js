@@ -370,7 +370,7 @@ function updateScanBar(evt) {
   const bar = $('#scanStatus');
   let pct = 0, label = evt.phase;
   if (evt.phase === 'copy') { pct = (evt.processed / Math.max(evt.total, 1)) * 100; label = `Copying ${evt.processed}/${evt.total}`; }
-  else if (evt.phase === 'ingest') { pct = (evt.processed / evt.total) * 100; label = `Indexing ${evt.processed}/${evt.total}`; }
+  else if (evt.phase === 'ingest') { pct = (evt.processed / Math.max(evt.total, 1)) * 100; label = `Indexing ${evt.processed}/${evt.total}`; }
   else if (evt.phase === 'thumbnails') { pct = (evt.processed / Math.max(evt.total,1)) * 100; label = `Thumbnails ${evt.processed}/${evt.total}`; }
   else if (evt.phase === 'discovery') label = 'Scanning filesystem…';
   else if (evt.phase === 'purge') label = 'Detecting removed files…';

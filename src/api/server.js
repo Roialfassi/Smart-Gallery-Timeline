@@ -5,6 +5,7 @@ const fs = require('fs');
 const express = require('express');
 const { EventEmitter } = require('events');
 const config = require('../config');
+const pkg = require('../../package.json');
 const runtimePaths = require('../runtime-paths');
 const { getDb } = require('../db/database');
 const queries = require('./queries');
@@ -98,13 +99,15 @@ async function runExport(options) {
 
 function createApp() {
   const app = express();
-  app.use(express.json());
+  // Import endpoints POST arbitrarily long arrays of source paths; the 100kb
+  // express default 413s a large multi-select, so widen the JSON body cap.
+  app.use(express.json({ limit: '5mb' }));
 
   const pub = path.join(config.paths.root, 'public');
   app.use(express.static(pub));
 
   // --- Health ---
-  app.get('/api/health', (req, res) => res.json({ ok: true, version: '0.1.0' }));
+  app.get('/api/health', (req, res) => res.json({ ok: true, version: pkg.version }));
 
   // --- Projects (no active project required) ---
   app.get('/api/projects/active', (req, res) => res.json({ project: project.getActive() }));

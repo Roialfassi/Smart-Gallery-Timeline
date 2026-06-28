@@ -71,13 +71,33 @@ async function generateForPhoto(photo) {
 }
 
 /**
+ * Refresh a thumbnail's last_accessed_at (LRU bookkeeping) off the response
+ * path. This value only orders eviction, so the image bytes never need to wait
+ * on the write — deferring it keeps thumbnail serving read-only in the hot path
+ * even when a full grid requests dozens of tiles at once. Best-effort: a closed
+ * project or a vanished row between request and defer is harmless.
+ */
+function touchLru(photoId, sizeType, file) {
+  setImmediate(() => {
+    try {
+      const now = new Date().toISOString();
+      getDb().prepare(`
+        INSERT INTO thumbnail_cache (photo_id, size_type, file_path, created_at, last_accessed_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(photo_id, size_type) DO UPDATE SET last_accessed_at = excluded.last_accessed_at
+      `).run(photoId, sizeType, file, now, now);
+    } catch (_) { /* LRU touch is best-effort */ }
+  });
+}
+
+/**
  * Resolve a thumbnail path for the UI, regenerating on demand if the cached
  * file is missing, and refreshing last_accessed_at for LRU.
  */
 async function resolveThumbnail(photoId, sizeType) {
   if (!TIERS[sizeType]) sizeType = 'MICRO';
   const db = getDb();
-  const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(photoId);
+  const photo = db.prepare('SELECT content_hash, file_path FROM photos WHERE id = ?').get(photoId);
   if (!photo) return null;
 
   let file = thumbFile(photo.content_hash, sizeType);
@@ -88,12 +108,7 @@ async function resolveThumbnail(photoId, sizeType) {
       return null;
     }
   }
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO thumbnail_cache (photo_id, size_type, file_path, created_at, last_accessed_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(photo_id, size_type) DO UPDATE SET last_accessed_at = excluded.last_accessed_at
-  `).run(photoId, sizeType, file, now, now);
+  touchLru(photoId, sizeType, file);
   return file;
 }
 

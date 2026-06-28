@@ -84,6 +84,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_photos_file_path     ON photos(file_path);
 CREATE INDEX        IF NOT EXISTS idx_photos_content_hash  ON photos(content_hash);
 CREATE INDEX        IF NOT EXISTS idx_photos_timeline_keyset ON photos(date_taken DESC, id DESC);
 CREATE INDEX        IF NOT EXISTS idx_photos_coords        ON photos(latitude, longitude) WHERE latitude IS NOT NULL;
+-- Sidebar filters (WHERE country_code/camera_model = ?) and stats() GROUP BYs
+-- scan these columns; partial indexes skip the many NULL rows.
+CREATE INDEX        IF NOT EXISTS idx_photos_country       ON photos(country_code) WHERE country_code IS NOT NULL;
+CREATE INDEX        IF NOT EXISTS idx_photos_camera        ON photos(camera_model) WHERE camera_model IS NOT NULL;
 CREATE INDEX        IF NOT EXISTS idx_photo_tags_photo     ON photo_tags(photo_id);
 CREATE INDEX        IF NOT EXISTS idx_photo_tags_tag       ON photo_tags(tag_id);
 CREATE INDEX        IF NOT EXISTS idx_thumbnails_photo     ON thumbnail_cache(photo_id);
