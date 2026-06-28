@@ -1,0 +1,87 @@
+name: Release
+
+# Build the Windows installer and publish it to GitHub Releases.
+#
+# Two ways to trigger:
+#   1. Push a version tag  ->  builds AND publishes a Release with the installer attached.
+#        git tag v0.2.0 && git push origin v0.2.0
+#   2. Run manually from the Actions tab (workflow_dispatch)  ->  builds the installer and
+#        uploads it as a downloadable build artifact only (no Release is created).
+#
+# Keep package.json's "version" in sync with the tag you push; the tag is the source of
+# truth here and is written into package.json before the build so the installer is named
+# to match.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.2.0). Defaults to package.json.'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            v="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            v="$(node -p "require('./package.json').version")"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Building version $v"
+
+      - name: Sync package.json version
+        shell: bash
+        run: npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install NSIS
+        shell: bash
+        run: |
+          choco install nsis -y --no-progress
+          echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+
+      - name: Seed demo library
+        run: npm run seed
+
+      - name: Build installer
+        run: npm run dist
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-gallery-timeline-windows-${{ steps.ver.outputs.version }}
+          path: dist-installer/*.exe
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-installer/Smart Gallery Timeline Setup *.exe
+          generate_release_notes: true
+          fail_on_unmatched_files: true

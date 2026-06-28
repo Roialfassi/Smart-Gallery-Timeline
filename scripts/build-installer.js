@@ -21,6 +21,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+const VERSION = require(path.join(ROOT, 'package.json')).version;
 const LOCALAPPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
 const CACHE = path.join(LOCALAPPDATA, 'electron-builder', 'Cache');
 
@@ -42,12 +43,31 @@ function fixWinCodeSignCache() {
 }
 
 function findMakensis() {
+  // 1) electron-builder's downloaded copy (present locally after a full nsis build).
   const nsisRoot = path.join(CACHE, 'nsis');
-  if (!fs.existsSync(nsisRoot)) return null;
-  const ver = fs.readdirSync(nsisRoot).find((d) => d.startsWith('nsis-3'));
-  if (!ver) return null;
-  const exe = path.join(nsisRoot, ver, 'makensis.exe');
-  return fs.existsSync(exe) ? exe : null;
+  if (fs.existsSync(nsisRoot)) {
+    const ver = fs.readdirSync(nsisRoot).find((d) => d.startsWith('nsis-3'));
+    if (ver) {
+      const exe = path.join(nsisRoot, ver, 'makensis.exe');
+      if (fs.existsSync(exe)) return exe;
+    }
+  }
+  // 2) A system-wide NSIS install (e.g. `choco install nsis` in CI, or a manual install).
+  const programFiles86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  for (const exe of [
+    path.join(programFiles86, 'NSIS', 'makensis.exe'),
+    path.join(programFiles, 'NSIS', 'makensis.exe'),
+  ]) {
+    if (fs.existsSync(exe)) return exe;
+  }
+  // 3) Anything named makensis on PATH.
+  const onPath = spawnSync('where', ['makensis'], { encoding: 'utf8' });
+  if (onPath.status === 0) {
+    const hit = onPath.stdout.split(/\r?\n/).map((s) => s.trim()).find((s) => s && fs.existsSync(s));
+    if (hit) return hit;
+  }
+  return null;
 }
 
 function packAppDir() {
@@ -73,12 +93,13 @@ function packAppDir() {
   }
   const makensis = findMakensis();
   if (!makensis) {
-    log('ERROR: makensis not found. Run "npm run pack" once so electron-builder downloads NSIS.');
+    log('ERROR: makensis not found. Install NSIS (e.g. "choco install nsis") or run a full');
+    log('       electron-builder nsis build once so it downloads NSIS into the cache.');
     process.exit(1);
   }
   const nsi = path.join(ROOT, 'build', 'installer.nsi');
-  log('building installer with makensis...');
-  const r = spawnSync(makensis, [nsi], { stdio: 'inherit' });
+  log('building installer v' + VERSION + ' with ' + makensis + ' ...');
+  const r = spawnSync(makensis, [`-DROOT=${ROOT}`, `-DVERSION=${VERSION}`, nsi], { stdio: 'inherit' });
   if (r.status !== 0) { log('ERROR: makensis failed.'); process.exit(1); }
   log('Done. Installer is in dist-installer/.');
 })();

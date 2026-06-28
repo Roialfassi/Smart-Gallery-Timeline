@@ -5,9 +5,24 @@ date browser, maps, journeys, spatial clustering, safe metadata tagging, and a j
 slideshow + MP4 exporter. No cloud, no build step — a Node + Express backend and a
 vanilla-JS frontend over a SQLite catalog.
 
-## Quick start
+## Install
+
+### Windows (download the installer)
+
+Grab the latest **`Smart Gallery Timeline Setup <version>.exe`** from the
+[**Releases**](https://github.com/Roialfassi/Smart-Gallery-Timeline/releases/latest) page
+and run it. It's a per-user install (no admin required) that adds Start-menu and desktop
+shortcuts and an uninstaller. Launching it opens a native window with the project launcher —
+click **Try the demo library** for a one-click tour, or **New project** to pick your own folder.
+
+> Releases are built automatically by GitHub Actions from a pushed version tag — see
+> [Releasing](#releasing) below.
+
+### Run from source (git)
 
 ```bash
+git clone https://github.com/Roialfassi/Smart-Gallery-Timeline.git
+cd Smart-Gallery-Timeline
 npm install          # native deps: better-sqlite3, sharp, ffmpeg-static
 npm run seed         # generate 56 demo photos across 5 trips (Paris, Rome, Tokyo, California, London)
 npm start            # serve http://127.0.0.1:4173
@@ -63,6 +78,27 @@ demo project, or **New project** to pick your own base folder.
 - `npm run electron` runs the desktop shell against your dev catalog without packaging.
 - The build auto-applies a winCodeSign cache workaround (see `scripts/build-installer.js`) so
   it succeeds on a stock Windows user account without Developer Mode or admin rights.
+
+## Releasing
+
+Releases are cut by the [`Release`](.github/workflows/release.yml) GitHub Actions workflow,
+which builds the Windows installer on a `windows-latest` runner and attaches it to a GitHub
+Release. To publish a new version:
+
+```bash
+# 1. bump the version in package.json (commit it)
+npm version <new-version> --no-git-tag-version   # e.g. 0.2.0
+git commit -am "Release v0.2.0"
+
+# 2. tag and push — the tag triggers the build + publish
+git tag v0.2.0
+git push origin main --tags
+```
+
+The tag name (without the leading `v`) becomes the installer version, so keep it in sync with
+`package.json`. The workflow auto-generates release notes from the commits since the previous
+tag. You can also run it manually from the **Actions** tab (workflow_dispatch) to produce the
+installer as a downloadable build artifact without publishing a Release.
 
 ## What it does (by phase)
 

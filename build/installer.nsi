@@ -9,8 +9,13 @@ Unicode true
 
 !define APPNAME    "Smart Gallery Timeline"
 !define COMPANY    "Smart Gallery"
-!define VERSION    "0.1.0"
 !define EXE        "Smart Gallery Timeline.exe"
+; VERSION is normally passed in by scripts/build-installer.js from package.json
+; (makensis -DVERSION=<x>). The fallback keeps a bare `makensis build\installer.nsi`
+; working for ad-hoc builds.
+!ifndef VERSION
+  !define VERSION "0.1.0"
+!endif
 ; ROOT is the repo root. This script lives in <root>\build, so by default we
 ; derive it from the script's own directory (${__FILEDIR__}). Override from any
 ; checkout location with:  makensis -DROOT=<path-to-repo> build\installer.nsi
