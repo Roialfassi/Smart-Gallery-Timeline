@@ -23,20 +23,16 @@ let mainWindow = null;
 
 function startServer() {
   return new Promise((resolve, reject) => {
-    let createApp, project;
+    let createApp;
     try {
-      project = require(path.join(__dirname, '..', 'src', 'services', 'project'));
       ({ createApp } = require(path.join(__dirname, '..', 'src', 'api', 'server')));
     } catch (e) {
       return reject(e);
     }
     try {
-      // Re-open the most recently used project, if any. With none, the UI shows
-      // the project launcher; no catalog database is opened until then.
-      try {
-        const recent = project.listRecent();
-        if (recent.length > 0) project.openProject(recent[0].baseDir);
-      } catch (_) { /* fall through to launcher */ }
+      // Start with no project open so the UI always lands on the project
+      // launcher ("choose a project"). Recent projects are listed there for
+      // one-click reopening; no catalog database is opened until then.
       const expressApp = createApp();
       const server = expressApp.listen(0, '127.0.0.1', () => {
         const { port } = server.address();
