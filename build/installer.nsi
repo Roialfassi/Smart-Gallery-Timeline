@@ -11,11 +11,17 @@ Unicode true
 !define COMPANY    "Smart Gallery"
 !define VERSION    "0.1.0"
 !define EXE        "Smart Gallery Timeline.exe"
-!define SOURCE     "C:\Users\roial\Documents\Fun-Repos\Smart-Gallery-Timeline\dist-installer\win-unpacked"
+; ROOT is the repo root. This script lives in <root>\build, so by default we
+; derive it from the script's own directory (${__FILEDIR__}). Override from any
+; checkout location with:  makensis -DROOT=<path-to-repo> build\installer.nsi
+!ifndef ROOT
+  !define ROOT "${__FILEDIR__}\.."
+!endif
+!define SOURCE     "${ROOT}\dist-installer\win-unpacked"
 !define UNINSTKEY  "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
 
 Name "${APPNAME}"
-OutFile "C:\Users\roial\Documents\Fun-Repos\Smart-Gallery-Timeline\dist-installer\Smart Gallery Timeline Setup ${VERSION}.exe"
+OutFile "${ROOT}\dist-installer\Smart Gallery Timeline Setup ${VERSION}.exe"
 RequestExecutionLevel user
 InstallDir "$LOCALAPPDATA\Programs\${APPNAME}"
 InstallDirRegKey HKCU "Software\${APPNAME}" "InstallDir"

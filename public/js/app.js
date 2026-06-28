@@ -313,7 +313,7 @@ function switchView(name) {
  * kicks off the job (re-scan, import folders, import files). Shared by the
  * Refresh button and the import dialog (projects.js).
  */
-function runScanUI(startRequest) {
+async function runScanUI(startRequest) {
   const bar = $('#scanStatus');
   bar.classList.remove('hidden');
   bar.innerHTML = '<span>Starting…</span>';
@@ -322,22 +322,37 @@ function runScanUI(startRequest) {
   if (refreshBtn) refreshBtn.disabled = true;
   const done = () => { if (importBtn) importBtn.disabled = false; if (refreshBtn) refreshBtn.disabled = false; };
 
+  // Start the job FIRST so the server is already 'running' (with a cleared
+  // terminal) before we subscribe. This avoids a fast job finishing in the gap
+  // before the stream attaches, and avoids reacting to a previous job's state.
+  try {
+    await startRequest();
+  } catch (e) {
+    toast(e.message, true); done(); bar.classList.add('hidden');
+    return;
+  }
+
   const es = new EventSource('/api/scan/stream');
+  let finished = false;
+  const finish = (evt) => {
+    if (finished) return;
+    finished = true;
+    es.close(); done();
+    setTimeout(() => bar.classList.add('hidden'), 2500);
+    if (evt && evt.phase === 'complete') refreshAll();
+  };
   es.onmessage = (ev) => {
     const evt = JSON.parse(ev.data);
-    updateScanBar(evt);
-    if (evt.phase === 'complete' || evt.phase === 'fatal') {
-      es.close(); done();
-      setTimeout(() => bar.classList.add('hidden'), 2500);
-      if (evt.phase === 'complete') refreshAll();
+    if (evt.phase === 'connected') {
+      // Job already finished before we attached -> finalize from the snapshot.
+      const st = evt.scanState;
+      if (st && !st.running && st.terminal) { updateScanBar(st.terminal); finish(st.terminal); }
+      return;
     }
+    updateScanBar(evt);
+    if (evt.phase === 'complete' || evt.phase === 'fatal') finish(evt);
   };
   es.onerror = () => { es.close(); done(); };
-
-  Promise.resolve(startRequest()).catch((e) => {
-    toast(e.message, true);
-    es.close(); done(); bar.classList.add('hidden');
-  });
 }
 
 /** Reload stats + every view after the catalog changes. */

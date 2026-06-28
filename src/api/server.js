@@ -37,11 +37,11 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
  */
 const scanBus = new EventEmitter();
 scanBus.setMaxListeners(50);
-let scanState = { running: false, lastSummary: null, lastEvent: null, path: null };
+let scanState = { running: false, lastSummary: null, lastEvent: null, path: null, terminal: null };
 
 async function runProgressJob(job, meta = {}) {
   if (scanState.running) throw new Error('A scan or import is already in progress');
-  scanState = { running: true, lastSummary: null, lastEvent: null, ...meta };
+  scanState = { running: true, lastSummary: null, lastEvent: null, terminal: null, ...meta };
   try {
     const summary = await job((evt) => {
       scanState.lastEvent = evt;
@@ -49,11 +49,17 @@ async function runProgressJob(job, meta = {}) {
     });
     scanState.running = false;
     scanState.lastSummary = summary;
-    scanBus.emit('progress', { phase: 'complete', summary });
+    // Remember the terminal event. A client that attaches to the SSE stream
+    // *after* a fast job already finished (notably the one-click demo import,
+    // which starts before the UI subscribes) reads this from the connect
+    // snapshot and finalizes, instead of waiting on an event it already missed.
+    scanState.terminal = { phase: 'complete', summary };
+    scanBus.emit('progress', scanState.terminal);
     return summary;
   } catch (e) {
     scanState.running = false;
-    scanBus.emit('progress', { phase: 'fatal', message: e.message });
+    scanState.terminal = { phase: 'fatal', message: e.message };
+    scanBus.emit('progress', scanState.terminal);
     throw e;
   }
 }
