@@ -9,9 +9,14 @@ const config = require('./config');
  * The app is project-based: each project lives in a base folder with a
  * `.smartgallery/` subfolder holding its own SQLite DB + thumbnails. When a
  * project is opened, `setActive()` re-points these paths and the catalog engine
- * (database.js, thumbnails.js, exportvideo.js) follows. With no project open,
- * `paths()` falls back to the legacy single-cache defaults from config so that
- * tooling/tests that never open a project still work.
+ * (database.js, thumbnails.js, exportvideo.js) follows.
+ *
+ * With NO project open there is deliberately no catalog: `dbFile`/`thumbnailDir`
+ * are null so the engine refuses to read or write a shared, project-less bucket.
+ * This is what guarantees full per-project isolation — nothing (the demo, the
+ * CLI, a stray scan) can ever land photos in a catalog that another project sees.
+ * Only `cacheDir` stays meaningful while idle: it is the app-global location of
+ * the recent-projects registry, not a catalog.
  */
 
 let active = null; // { baseDir, sgDir, name } | null
@@ -29,7 +34,11 @@ function getActive() {
   return active;
 }
 
-/** Current writable paths — project paths when one is open, else config defaults. */
+/**
+ * Current writable paths. When a project is open these point inside its
+ * `.smartgallery/`; when idle the catalog paths are null (no shared bucket) and
+ * only `cacheDir` (the app-global registry dir) is returned.
+ */
 function paths() {
   if (active) {
     return {
@@ -41,9 +50,9 @@ function paths() {
   }
   return {
     baseDir: null,
-    cacheDir: config.paths.cacheDir,
-    dbFile: config.paths.dbFile,
-    thumbnailDir: config.paths.thumbnailDir,
+    cacheDir: config.paths.cacheDir, // app-global: recent-projects registry only
+    dbFile: null,
+    thumbnailDir: null,
   };
 }
 

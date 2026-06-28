@@ -12,6 +12,7 @@
 
 const path = require('path');
 const { app, BrowserWindow, shell, dialog, Menu, ipcMain } = require('electron');
+const updater = require('./updater');
 
 // Redirect the writable cache out of the (read-only) install dir when installed.
 if (app.isPackaged) {
@@ -86,9 +87,23 @@ async function createWindow() {
         { role: 'quit' },
       ],
     },
+    {
+      label: 'Help',
+      submenu: [
+        { label: 'Check for Updates…', click: () => updater.checkForUpdates(mainWindow, { silent: false }) },
+        { label: 'Release Notes / Downloads', click: () => shell.openExternal(updater.releasesPageUrl()) },
+      ],
+    },
   ]));
 
   mainWindow.loadURL(info.url);
+
+  // Quiet check-on-launch (installed builds only): notify only if an update
+  // exists; stays silent when offline or already current. Delayed so it never
+  // competes with first paint.
+  if (app.isPackaged) {
+    setTimeout(() => { updater.checkForUpdates(mainWindow, { silent: true }).catch(() => {}); }, 4000);
+  }
 
   // Open <a target="_blank"> and any window.open in the system browser instead.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -136,6 +151,9 @@ function registerIpc() {
     });
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
+
+  ipcMain.handle('app-version', () => app.getVersion());
+  ipcMain.handle('check-for-updates', () => updater.checkForUpdates(mainWindow, { silent: false }));
 }
 
 // Single-instance: focus the existing window instead of launching a second copy.

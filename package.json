@@ -2,6 +2,10 @@
   "name": "smart-gallery-timeline",
   "version": "0.1.0",
   "description": "Smart Gallery Timeline - chronological photo catalog with maps, journeys, clustering, tagging, and slideshows.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Roialfassi/Smart-Gallery-Timeline.git"
+  },
   "type": "commonjs",
   "main": "electron/main.js",
   "scripts": {

@@ -49,6 +49,11 @@ async function discover(root) {
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
         if (ent.name === 'node_modules' || ent.name.startsWith('.')) continue;
+        // Hard project boundary: a subfolder that is itself a project owns its
+        // own catalog, so we never descend into it — its photos must not bleed
+        // into this scan. (Keeps the demo / sibling projects fully isolated even
+        // when one project's base folder nests another.)
+        if (fs.existsSync(path.join(full, '.smartgallery'))) continue;
         await walk(full);
       } else if (ent.isFile() && isImage(ent.name)) {
         try {

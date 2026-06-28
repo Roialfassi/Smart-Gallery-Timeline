@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld('sgtNative', {
   pickFiles: () => ipcRenderer.invoke('pick-files'),
   pickProjectDir: () => ipcRenderer.invoke('pick-project-dir'),
   newProjectDir: () => ipcRenderer.invoke('new-project-dir'),
+  appVersion: () => ipcRenderer.invoke('app-version'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
 });

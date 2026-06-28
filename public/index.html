@@ -197,6 +197,7 @@
         <h4>Recent projects</h4>
         <div id="lcRecent" class="recent-list"></div>
       </div>
+      <div class="launcher-foot" id="launcherFoot"></div>
     </div>
   </div>
 
@@ -218,10 +219,46 @@
     </div>
   </div>
 
+  <!-- FOLDER BROWSER — in-app folder explorer for New / Open project -->
+  <div id="folderModal" class="modal hidden">
+    <div class="modal-card fb-card">
+      <button class="modal-close" id="fbClose">✕</button>
+      <h2 id="fbTitle">Choose a folder</h2>
+      <p class="muted" id="fbSubtitle"></p>
+
+      <div class="fb-pathbar">
+        <input id="fbPath" type="text" spellcheck="false" placeholder="Paste or type a folder path…" />
+        <button id="fbGo" class="btn btn-sm">Go</button>
+      </div>
+
+      <div class="fb-body">
+        <aside class="fb-places" id="fbPlaces"></aside>
+        <div class="fb-list" id="fbList"></div>
+      </div>
+
+      <div class="fb-newrow hidden" id="fbNewRow">
+        <input id="fbNewFolder" type="text" placeholder="New folder name…" />
+        <button id="fbMkdir" class="btn btn-sm">＋ Create folder</button>
+      </div>
+      <div class="fb-namerow hidden" id="fbNameRow">
+        <label for="fbProjName">Project name</label>
+        <input id="fbProjName" type="text" placeholder="My Photos" />
+      </div>
+
+      <div class="fb-footer">
+        <span class="fb-selected" id="fbSelected"></span>
+        <span class="fb-spacer"></span>
+        <button class="btn" id="fbCancel">Cancel</button>
+        <button class="btn btn-primary" id="fbConfirm" disabled>Select</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script src="/vendor/markercluster/leaflet.markercluster.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/app.js"></script>
+  <script src="/js/folderbrowser.js"></script>
   <script src="/js/projects.js"></script>
   <script src="/js/timeline.js"></script>
   <script src="/js/map.js"></script>

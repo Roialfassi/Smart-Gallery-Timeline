@@ -38,8 +38,34 @@
 
   /* ------------------------------- Launcher -------------------------------- */
 
+  // Version + "Check for updates" in the launcher footer (desktop app only —
+  // a plain browser can't self-update). The native menu also has the action,
+  // but the menu bar is auto-hidden, so this is the visible entry point.
+  async function renderFooter() {
+    const foot = $('#launcherFoot');
+    if (!foot) return;
+    const n = native();
+    if (!n || !n.checkForUpdates) { foot.innerHTML = ''; return; }
+    let ver = '';
+    try { ver = n.appVersion ? await n.appVersion() : ''; } catch (_) { /* ignore */ }
+    foot.innerHTML = '';
+    if (ver) {
+      const v = document.createElement('span');
+      v.className = 'lf-ver';
+      v.textContent = 'v' + ver;
+      foot.appendChild(v);
+      foot.appendChild(document.createTextNode(' · '));
+    }
+    const btn = document.createElement('button');
+    btn.className = 'lf-link';
+    btn.textContent = 'Check for updates';
+    btn.addEventListener('click', () => { try { n.checkForUpdates(); } catch (_) { /* ignore */ } });
+    foot.appendChild(btn);
+  }
+
   async function showLauncher() {
     hideActiveChrome();
+    renderFooter();
     const host = $('#lcRecent');
     host.innerHTML = '<span class="muted">Loading…</span>';
     try {
@@ -73,23 +99,18 @@
   }
 
   async function newProject() {
-    let baseDir;
-    if (native()) baseDir = await native().newProjectDir();
-    else baseDir = window.prompt('Enter a folder path for the new project (it will be created if needed):', '');
-    if (!baseDir) return;
-    const name = window.prompt('Name this project:', basename(baseDir)) || basename(baseDir);
+    const choice = await window.FolderBrowser.choose({ mode: 'new' });
+    if (!choice || !choice.baseDir) return;
     try {
-      const r = await API.newProject(baseDir, name);
+      const r = await API.newProject(choice.baseDir, choice.name || basename(choice.baseDir));
       activate(r.project);
     } catch (e) { App().toast(e.message, true); }
   }
 
   async function openProject() {
-    let dir;
-    if (native()) dir = await native().pickProjectDir();
-    else dir = window.prompt('Enter the project folder to open:', '');
-    if (!dir) return;
-    openProjectAt(dir);
+    const choice = await window.FolderBrowser.choose({ mode: 'open' });
+    if (!choice || !choice.baseDir) return;
+    openProjectAt(choice.baseDir);
   }
 
   async function openProjectAt(baseDir) {

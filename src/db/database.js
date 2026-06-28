@@ -13,13 +13,19 @@ let dbPath = null;
  * Idempotent — calling more than once returns the same connection.
  *
  * The target file comes from runtime-paths, which points at the currently open
- * project's `.smartgallery/gallery.db` (or the legacy default cache when no
- * project is active). `closeDb()` resets the handle so a later `getDb()` opens
- * the now-active project's database — that's how project switching re-points
- * the whole catalog engine.
+ * project's `.smartgallery/gallery.db`. With no project open there is no catalog
+ * at all (full isolation — never a shared bucket), so `getDb()` throws rather
+ * than opening a default DB. `closeDb()` resets the handle so a later `getDb()`
+ * opens the now-active project's database — that's how project switching
+ * re-points the whole catalog engine.
  */
 function getDb() {
   const p = runtimePaths.paths();
+  if (!p.dbFile) {
+    const e = new Error('No project is open. Create or open a project first.');
+    e.errorCode = 'NO_ACTIVE_PROJECT';
+    throw e;
+  }
   if (db && dbPath === p.dbFile) return db;
   if (db && dbPath !== p.dbFile) closeDb(); // active project changed — reopen
 

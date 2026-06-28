@@ -46,6 +46,10 @@ const API = {
   segmentsFull: () => API.get('/api/segments?withPhotos=1'),
   segmentPhotos: (id) => API.get(`/api/segments/photos?id=${encodeURIComponent(id)}`),
 
+  // Host folder browser (New/Open project picker)
+  fsList: (path) => API.get('/api/fs/list' + (path ? '?path=' + encodeURIComponent(path) : '')),
+  fsMkdir: (parent, name) => API.post('/api/fs/mkdir', { parent, name }),
+
   // Projects
   projectsActive: () => API.get('/api/projects/active'),
   projectsRecent: () => API.get('/api/projects/recent'),

@@ -287,6 +287,11 @@ input[type=checkbox], input[type=range] { accent-color: var(--accent); }
 .recent-card:hover { background: var(--surface-3); }
 .recent-card .rc-name { font-weight: 500; font-size: 13px; }
 .recent-card .rc-path { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.launcher-foot { margin-top: 20px; text-align: center; font-size: 12px; color: var(--muted-2); }
+.launcher-foot:empty { display: none; }
+.launcher-foot .lf-ver { color: var(--muted); }
+.lf-link { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0; font-family: inherit; }
+.lf-link:hover { text-decoration: underline; }
 
 /* Modal (import dialog) */
 .modal { position: fixed; inset: 0; z-index: 160; display: flex; align-items: center; justify-content: center; background: rgba(32,33,36,.55); }
@@ -300,6 +305,33 @@ input[type=checkbox], input[type=range] { accent-color: var(--accent); }
 .import-fallback label { font-size: 12px; color: var(--muted); }
 .import-fallback textarea { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; font-family: inherit; resize: vertical; }
 .import-fallback textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* Folder browser (New / Open project picker) */
+.fb-card { width: 660px; max-width: calc(100vw - 40px); }
+.fb-pathbar { display: flex; gap: 8px; margin-bottom: 12px; }
+.fb-pathbar input { flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 12px; font-size: 13px; font-family: inherit; }
+.fb-pathbar input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.fb-body { display: flex; gap: 12px; height: 320px; }
+.fb-places { width: 160px; flex: none; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+.fb-places-h { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted-2); padding: 8px 8px 4px; font-weight: 600; }
+.fb-place { text-align: left; background: transparent; border: none; color: var(--text); padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-place:hover { background: var(--surface-3); }
+.fb-list { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; }
+.fb-row { width: 100%; text-align: left; background: transparent; border: none; color: var(--text); padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 10px; }
+.fb-row:hover { background: var(--surface-3); }
+.fb-ic { width: 18px; text-align: center; flex: none; }
+.fb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.fb-badge { font-size: 10px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-line); padding: 1px 8px; border-radius: var(--pill); flex: none; }
+.fb-up .fb-name { color: var(--muted); }
+.fb-empty { color: var(--muted); font-size: 12px; padding: 14px 10px; }
+.fb-newrow, .fb-namerow { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.fb-newrow input, .fb-namerow input { flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 8px 12px; font-size: 13px; font-family: inherit; }
+.fb-newrow input:focus, .fb-namerow input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.fb-namerow label { font-size: 12px; color: var(--muted); flex: none; }
+.fb-footer { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.fb-selected { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; }
+.fb-selected.fb-warn { color: var(--warn); }
+.fb-spacer { flex: 1; }
 
 /* Moments view — panes */
 #view-moments > .moments-rail,

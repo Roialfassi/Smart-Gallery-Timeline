@@ -79,6 +79,16 @@ demo project, or **New project** to pick your own base folder.
 - The build auto-applies a winCodeSign cache workaround (see `scripts/build-installer.js`) so
   it succeeds on a stock Windows user account without Developer Mode or admin rights.
 
+### Updating
+
+The installed app updates itself from GitHub Releases. It checks quietly on launch and via
+**Help → Check for Updates…** (or **Check for updates** on the project launcher). When a newer
+release exists it offers to download that release's `Setup .exe`, then closes and runs the
+installer (per-user, no admin), which reopens the app on finish. The updater compares the
+running `app.getVersion()` against the latest release tag, so just publishing a new release
+(below) makes it available to every installed copy — no separate update server. See
+`electron/updater.js` (network + install) and `electron/update-utils.js` (version/asset logic).
+
 ## Releasing
 
 Releases are cut by the [`Release`](.github/workflows/release.yml) GitHub Actions workflow,

@@ -18,6 +18,7 @@ const { writeTagsToJpeg } = require('../services/exifwriter');
 const { exportMp4 } = require('../services/exportvideo');
 const project = require('../services/project');
 const importer = require('../services/importer');
+const fsbrowse = require('../services/fsbrowse');
 
 const MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -161,6 +162,26 @@ function createApp() {
       return res.json({ ok: true, project: active, importing: true });
     }
     res.json({ ok: true, project: active, importing: false });
+  }));
+
+  // --- Host folder browser (no active project required) — backs the in-app
+  //     New/Open project folder picker so path entry is never a typed prompt. ---
+  app.get('/api/fs/list', wrap((req, res) => {
+    try {
+      res.json(fsbrowse.list(req.query.path));
+    } catch (e) {
+      const status = e.fsCode === 'EACCES' ? 403 : 404;
+      return err(res, 'PATH_NOT_FOUND', status, e.message || 'Cannot open that folder', { path: req.query.path || null });
+    }
+  }));
+
+  app.post('/api/fs/mkdir', wrap((req, res) => {
+    const { parent, name } = req.body || {};
+    try {
+      res.json({ ok: true, ...fsbrowse.makeDir(parent, name) });
+    } catch (e) {
+      return err(res, 'INVALID_IMAGE_FORMAT', 400, e.message || 'Could not create that folder');
+    }
   }));
 
   // --- Guard: everything below requires an open project ---
