@@ -77,11 +77,15 @@ const config = {
     TILE_MAX_BYTES: 500 * 1024 * 1024, // 500MB
   },
 
-  // Supported format classes. Writable formats use metadata-invariant hashing and
-  // permit EXIF write-back; read-only formats use full-file SHA-256 only.
+  // Supported format classes. WRITABLE formats use metadata-invariant (structural)
+  // hashing so an EXIF rewrite never changes their content hash; READ_ONLY formats
+  // use full-file SHA-256. WRITEBACK is the (narrower) set whose tags can actually
+  // be written back into the file header — JPEG only in this build. Tags for every
+  // other format are kept in the database index. Keep WRITEBACK ⊆ WRITABLE.
   formats: {
     WRITABLE: ['.jpg', '.jpeg', '.png', '.webp'],
     READ_ONLY: ['.heic', '.heif', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.raf', '.orf', '.rw2'],
+    WRITEBACK: ['.jpg', '.jpeg'],
     get ALL_IMAGES() {
       return [...this.WRITABLE, ...this.READ_ONLY];
     },

@@ -264,7 +264,7 @@ async function renderLightbox(id) {
     <div class="meta-row"><span class="k">GPS</span><span class="v">${gps}</span></div>
     <div class="meta-row"><span class="k">Camera</span><span class="v">${esc([detail.camera_make, detail.camera_model].filter(Boolean).join(' ')) || '—'}</span></div>
     <div class="meta-row"><span class="k">Dimensions</span><span class="v">${detail.width || '?'} × ${detail.height || '?'}</span></div>
-    <div class="meta-row"><span class="k">Format</span><span class="v">${esc((detail.format || '').toUpperCase())} ${detail.writable ? '· writable' : '· read-only'}</span></div>
+    <div class="meta-row"><span class="k">Format</span><span class="v">${esc((detail.format || '').toUpperCase())} ${['jpg', 'jpeg'].includes((detail.format || '').toLowerCase()) ? '· tags write to file' : '· tags in database'}</span></div>
     ${detail.latitude != null ? '<div id="lbMap" class="lb-map"></div>' : ''}
     <div id="lbTagHost"></div>`;
 

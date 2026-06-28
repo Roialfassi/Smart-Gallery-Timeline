@@ -223,10 +223,10 @@ function createApp() {
     const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(id);
     if (!photo) return err(res, 'PATH_NOT_FOUND', 404, 'Photo not found');
 
-    const isJpeg = ['jpg', 'jpeg'].includes((photo.format || '').toLowerCase());
-    if (writeback && !(photo.writable && isJpeg)) {
+    const canWriteBack = config.formats.WRITEBACK.includes('.' + (photo.format || '').toLowerCase());
+    if (writeback && !canWriteBack) {
       return err(res, 'INVALID_IMAGE_FORMAT', 400,
-        'Write-back is only supported for JPEG/PNG/WebP. Tags for HEIC and RAW are cached in the database only.',
+        'Tag write-back to the file header is only supported for JPEG in this build. Tags for PNG, WebP, HEIC and RAW are stored in the database index only.',
         { format: photo.format });
     }
 
@@ -293,9 +293,12 @@ function createApp() {
   }));
 
   // --- Spatial clusters (DBSCAN, stable IDs) ---
-  app.get('/api/clusters', wrap((req, res) => {
-    const radius = req.query.radius || config.spatial.SPATIAL_CLUSTER_RADIUS_DEFAULT_METERS;
-    res.json(clustering.computeSpatialClusters(radius, req.query));
+  // POST, not GET: computing clusters persists stable IDs (insert/update/delete in
+  // clusters + photo_clusters), so this is a mutating, non-idempotent operation.
+  app.post('/api/clusters', wrap((req, res) => {
+    const body = req.body || {};
+    const radius = body.radius || config.spatial.SPATIAL_CLUSTER_RADIUS_DEFAULT_METERS;
+    res.json(clustering.computeSpatialClusters(radius, body));
   }));
 
   app.post('/api/clusters/:id/name', wrap((req, res) => {

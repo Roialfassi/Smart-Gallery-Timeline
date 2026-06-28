@@ -20,7 +20,8 @@ window.Clusters = (function () {
     const host = document.querySelector('#clusterList');
     host.innerHTML = '<div class="muted">Computing clusters…</div>';
     let data;
-    try { data = await API.get(qs('/api/clusters', { radius: radius() })); }
+    // POST: computing clusters persists stable IDs server-side (a mutating op).
+    try { data = await API.post('/api/clusters', { ...GalleryApp.state.filters, radius: radius() }); }
     catch (e) { host.innerHTML = `<div class="muted">${esc(e.message)}</div>`; return; }
 
     host.innerHTML = '';

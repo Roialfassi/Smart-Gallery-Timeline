@@ -20,6 +20,12 @@ Timeline · Cluster · Slideshow**.
 
 > First `npm install` compiles native modules and downloads an ffmpeg binary; allow a minute.
 
+> **Network use:** your photos, catalog, and all processing stay on your machine, and the
+> reverse-geocoder is fully offline. The **map views are the one exception** — base map
+> tiles are fetched from a public tile server (ArcGIS) at runtime, so Map, Slideshow, and
+> the in-photo mini-map render blank tiles when you're offline. Leaflet itself is vendored
+> under `public/vendor/`, so the app shell and every non-map view work with no network.
+
 ## Projects
 
 A **project is a folder.** It holds the photos you import plus a `.smartgallery/`
@@ -83,7 +89,8 @@ demo project, or **New project** to pick your own base folder.
   `R = 0.5·spatial(200m) + 0.3·temporal(12h) + 0.2·folder`.
 - **Atomic EXIF write-back** to JPEG headers: advisory `.lock` → temp write → integrity
   check → atomic rename → DB mtime/size sync. The content hash is preserved, so the
-  scanner never mistakes a tag edit for a new file. HEIC/RAW tags stay in the DB index only.
+  scanner never mistakes a tag edit for a new file. Write-back is JPEG-only in this build;
+  PNG/WebP/HEIC/RAW tags stay in the DB index only.
 
 ### Phase 4 — Slideshow & MP4 export
 - **In-app slideshow** that crossfades through geotagged photos while the map glide-pans

@@ -10,7 +10,7 @@ window.Tagging = (function () {
   function render(detail, host) {
     const writable = isWritable(detail);
     const tip = writable ? '' :
-      'Metadata write-back is only supported for JPEG, PNG, and WebP. Tags for HEIC and RAW are cached in the app database only.';
+      'Tag write-back to the file header is only supported for JPEG in this build. Tags for PNG, WebP, HEIC and RAW are stored in the app database only.';
     host.innerHTML = `
       <div class="tag-edit">
         <h3 style="font-size:13px;margin:0 0 6px">Tags</h3>
