@@ -1,0 +1,67 @@
+{
+  "name": "smart-gallery-timeline",
+  "version": "0.1.0",
+  "description": "Smart Gallery Timeline - chronological photo catalog with maps, journeys, clustering, tagging, and slideshows.",
+  "type": "commonjs",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node scripts/rebuild-native.js node && node src/index.js",
+    "seed": "node scripts/seed-demo.js",
+    "scan": "node scripts/rebuild-native.js node && node scripts/scan-cli.js",
+    "electron": "node scripts/rebuild-native.js electron && electron .",
+    "pack": "node scripts/rebuild-native.js electron && electron-builder --dir",
+    "dist": "node scripts/build-installer.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "exifr": "^7.1.3",
+    "express": "^4.21.2",
+    "ffmpeg-static": "^5.3.0",
+    "piexifjs": "^1.0.6",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.smartgallery.timeline",
+    "productName": "Smart Gallery Timeline",
+    "asar": false,
+    "npmRebuild": false,
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "public/**/*",
+      "data/**/*",
+      "demo-photos/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/.DS_Store"
+    ],
+    "directories": {
+      "output": "dist-installer"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Smart Gallery Timeline"
+    }
+  }
+}

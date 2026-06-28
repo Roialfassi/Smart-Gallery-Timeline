@@ -1,0 +1,102 @@
+'use strict';
+
+const path = require('path');
+const os = require('os');
+
+// ROOT points at bundled, read-only resources (src/public/data/demo-photos).
+// CACHE_DIR holds the writable SQLite DB + thumbnails. When packaged (e.g. inside
+// an Electron installer under Program Files), the Electron main process sets
+// SGT_CACHE_DIR to a writable per-user location; in dev both default to the repo.
+const ROOT = process.env.SGT_RESOURCES_DIR
+  ? path.resolve(process.env.SGT_RESOURCES_DIR)
+  : path.resolve(__dirname, '..');
+const CACHE_DIR = process.env.SGT_CACHE_DIR
+  ? path.resolve(process.env.SGT_CACHE_DIR)
+  : path.join(ROOT, 'cache');
+
+/**
+ * Centralized configuration parameters.
+ * Mirrors plan/architecture.md Section 2 ("Centralized Configuration Parameters").
+ * Every subsystem references this single block — do not hard-code these values elsewhere.
+ */
+const config = {
+  paths: {
+    root: ROOT,
+    cacheDir: CACHE_DIR,
+    dbFile: path.join(CACHE_DIR, 'gallery.db'),
+    thumbnailDir: path.join(CACHE_DIR, 'thumbnails'),
+    tileCacheDir: path.join(CACHE_DIR, 'tiles'),
+    dataDir: path.join(ROOT, 'data'),
+  },
+
+  spatial: {
+    SPATIAL_CLUSTER_RADIUS_DEFAULT_METERS: 300,
+    SPATIAL_CLUSTER_RADIUS_MIN_METERS: 50,
+    SPATIAL_CLUSTER_RADIUS_MAX_METERS: 50000,
+    TAG_SUGGESTION_RADIUS_METERS: 200,
+    JOURNEY_SEGMENT_MAX_DISTANCE_KM: 80,
+    JOURNEY_SEGMENT_MAX_TIME_HOURS: 8,
+  },
+
+  // Moments timeline segmentation (trip detection + everyday period bucketing).
+  timeline: {
+    TRIP_GAP_DAYS: 3,            // a gap larger than this breaks a trip into two
+    TRIP_MIN_PHOTOS: 6,          // a run needs at least this many photos to be a trip
+    TRIP_MIN_HOURS: 6,           // ...and must span at least this long
+    TRIP_MIN_DISTANCE_KM: 150,   // distance from home centroid that counts as "away"
+    TRIP_STOP_RADIUS_KM: 25,     // a new stop ("place") starts beyond this from the stop centroid
+    PERIOD_WEEKLY_MIN_PHOTOS: 30, // a non-trip month with >= this many photos splits into weeks
+  },
+
+  scanning: {
+    THUMBNAIL_MICRO_WIDTH_PX: 150,
+    THUMBNAIL_PREVIEW_WIDTH_PX: 800,
+    THUMBNAIL_MICRO_QUALITY: 75,
+    THUMBNAIL_PREVIEW_QUALITY: 80,
+    DUPLICATE_STRATEGY: 'index_all_reference_hash',
+    IGNORE_EXTENSIONS: ['.tmp', '.lock', '.bak'],
+  },
+
+  tagging: {
+    MIN_SUPPORT_TAG_INTERSECTION: 0.05,
+    STOPWORDS: ['dcim', 'canon', 'apple', 'camera', 'photo', 'image', 'dsc', 'img'],
+    RECOMMENDATION_THRESHOLD: 0.15,
+    TEMPORAL_WINDOW_HOURS: 12,
+    WEIGHT_SPATIAL: 0.5,
+    WEIGHT_TEMPORAL: 0.3,
+    WEIGHT_FOLDER: 0.2,
+  },
+
+  clustering: {
+    JACCARD_STABLE_THRESHOLD: 0.5,
+    CENTROID_SHIFT_STABLE_METERS: 100,
+  },
+
+  cache: {
+    THUMBNAIL_MAX_BYTES: 1024 * 1024 * 1024, // 1GB
+    TILE_MAX_BYTES: 500 * 1024 * 1024, // 500MB
+  },
+
+  // Supported format classes. Writable formats use metadata-invariant hashing and
+  // permit EXIF write-back; read-only formats use full-file SHA-256 only.
+  formats: {
+    WRITABLE: ['.jpg', '.jpeg', '.png', '.webp'],
+    READ_ONLY: ['.heic', '.heif', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.raf', '.orf', '.rw2'],
+    get ALL_IMAGES() {
+      return [...this.WRITABLE, ...this.READ_ONLY];
+    },
+  },
+
+  server: {
+    PORT: process.env.PORT ? Number(process.env.PORT) : 4173,
+    HOST: process.env.HOST || '127.0.0.1',
+    PAGE_SIZE: 120, // default keyset page size for the timeline grid
+  },
+
+  system: {
+    tzOffsetMinutes: -new Date().getTimezoneOffset(),
+    hostname: os.hostname(),
+  },
+};
+
+module.exports = config;

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Gallery Timeline</title>
+  <link rel="preconnect" href="https://unpkg.com" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><g><path fill="#4285F4" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/><path fill="#EA4335" transform="rotate(90 12 12)" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/><path fill="#FBBC04" transform="rotate(180 12 12)" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/><path fill="#34A853" transform="rotate(270 12 12)" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/></g></svg>
+      <h1>Smart Gallery <span>Timeline</span></h1>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-view="moments">Moments</button>
+      <button class="tab" data-view="map">Map &amp; Journeys</button>
+      <button class="tab" data-view="clusters">Clusters</button>
+      <button class="tab" data-view="slideshow">Slideshow</button>
+    </nav>
+    <div class="topbar-actions" id="topbarActions">
+      <div id="projectChip" class="project-chip hidden">
+        <span class="pc-dot"></span>
+        <span id="projectName" class="pc-name"></span>
+        <button id="switchProjectBtn" class="btn btn-ghost btn-sm" title="Open or create another project">Switch</button>
+      </div>
+      <button id="refreshBtn" class="btn btn-sm hidden" title="Re-scan the project folder for external changes">⟳ Refresh</button>
+      <button id="importBtn" class="btn btn-primary hidden">＋ Import photos</button>
+    </div>
+  </header>
+
+  <div id="scanStatus" class="scan-status hidden"></div>
+
+  <main class="layout">
+    <aside class="sidebar" id="sidebar">
+      <section class="stats-card" id="statsCard">
+        <div class="stat"><span class="stat-num" id="statTotal">–</span><span class="stat-label">Photos</span></div>
+        <div class="stat"><span class="stat-num" id="statGeo">–</span><span class="stat-label">Geotagged</span></div>
+        <div class="stat"><span class="stat-num" id="statCountries">–</span><span class="stat-label">Countries</span></div>
+      </section>
+
+      <section class="filter-group">
+        <h3>Filters</h3>
+        <div id="activeFilters" class="active-filters"></div>
+        <button id="clearFilters" class="btn btn-ghost btn-sm hidden">Clear filters</button>
+      </section>
+
+      <section class="filter-group">
+        <h4>Years</h4>
+        <div id="filterYears" class="chip-list"></div>
+      </section>
+      <section class="filter-group">
+        <h4>Countries</h4>
+        <div id="filterCountries" class="chip-list"></div>
+      </section>
+      <section class="filter-group">
+        <h4>Cameras</h4>
+        <div id="filterCameras" class="chip-list"></div>
+      </section>
+    </aside>
+
+    <!-- MOMENTS VIEW — trip/period segmented timeline -->
+    <section class="view active" id="view-moments">
+      <!-- Overview toolbar: whole continuous timeline vs grouped cards -->
+      <div class="moments-toolbar hidden" id="momentsToolbar">
+        <div class="seg-toggle" id="segToggle">
+          <button class="seg-toggle-btn" data-mode="whole">Timeline</button>
+          <button class="seg-toggle-btn active" data-mode="grouped">Grouped</button>
+        </div>
+        <span class="moments-hint" id="momentsHint"></span>
+      </div>
+
+      <!-- RAIL: trip & period cards (grouped overview) -->
+      <div id="momentsRail" class="moments-rail">
+        <div id="segRail" class="seg-rail"></div>
+        <div id="segEmpty" class="empty-state hidden">
+          <p>No photos yet.</p>
+          <p class="muted">Use <strong>＋ Import photos</strong> to build your Moments timeline.</p>
+        </div>
+      </div>
+
+      <!-- WHOLE: the entire project as one continuous timeline -->
+      <div id="momentsWhole" class="moments-whole hidden">
+        <div id="wholeBody" class="seg-detail-body"></div>
+      </div>
+
+      <!-- DETAIL: a single trip/period, start → finish -->
+      <div id="momentsDetail" class="moments-detail hidden">
+        <div id="segDetailHeader" class="seg-detail-header"></div>
+        <div id="segDetailBody" class="seg-detail-body"></div>
+      </div>
+
+      <!-- FILTERED GRID: flat photo grid, shown when a filter / cluster / tag is active -->
+      <div id="momentsGrid" class="moments-grid hidden">
+        <div class="rollup-strip" id="rollupStrip"></div>
+        <div class="timeline-grid-wrap" id="timelineScroll">
+          <div id="timelineGrid" class="timeline-grid"></div>
+          <div id="timelineSentinel" class="sentinel"></div>
+          <div id="timelineEmpty" class="empty-state hidden">
+            <p>No photos match these filters.</p>
+            <p class="muted">Clear filters to return to your Moments timeline.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAP VIEW (Phase 2) -->
+    <section class="view" id="view-map">
+      <div class="map-toolbar">
+        <label class="switch"><input type="checkbox" id="journeyToggle" checked /> Journey tracks</label>
+        <span class="map-info" id="mapInfo"></span>
+      </div>
+      <div id="leafletMap" class="leaflet-map"></div>
+    </section>
+
+    <!-- CLUSTERS VIEW (Phase 2) -->
+    <section class="view" id="view-clusters">
+      <div class="clusters-toolbar">
+        <label>Cluster radius:
+          <input type="range" id="radiusSlider" min="50" max="50000" step="50" value="300" />
+          <span id="radiusValue">300 m</span>
+        </label>
+        <button id="recomputeClusters" class="btn btn-sm">Recompute</button>
+      </div>
+      <div class="clusters-layout">
+        <div id="clusterList" class="cluster-list"></div>
+        <div id="wordCloud" class="word-cloud">
+          <h3>Keyword Intersections</h3>
+          <div id="tagMatrix" class="tag-matrix"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDESHOW VIEW (Phase 4) -->
+    <section class="view" id="view-slideshow">
+      <div class="slideshow-toolbar">
+        <button id="ssPlay" class="btn btn-primary">▶ Play</button>
+        <button id="ssPrev" class="btn btn-sm">‹</button>
+        <button id="ssNext" class="btn btn-sm">›</button>
+        <label class="ss-speed">Seconds / photo
+          <input type="range" id="ssSpeed" min="1" max="6" step="0.5" value="2.5" />
+          <span id="ssSpeedVal">2.5s</span>
+        </label>
+        <label class="switch"><input type="checkbox" id="ssTransition" checked /> Crossfade</label>
+        <span class="ss-counter" id="ssCounter"></span>
+        <button id="ssExport" class="btn btn-export">⬇ Export MP4</button>
+      </div>
+      <div class="slideshow-stage" id="ssStage">
+        <div class="ss-photo-pane">
+          <img id="ssImgA" class="ss-img" alt="" />
+          <img id="ssImgB" class="ss-img" alt="" />
+          <div class="ss-caption" id="ssCaption"></div>
+        </div>
+        <div class="ss-map-pane">
+          <div id="ssMap" class="ss-map"></div>
+        </div>
+      </div>
+      <div id="ssExportPanel" class="ss-export-panel hidden"></div>
+      <div id="slideshowEmpty" class="empty-state hidden">
+        <p>No geotagged photos to present.</p>
+        <p class="muted">Scan a library with GPS-tagged photos to build a journey slideshow.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- LIGHTBOX -->
+  <div id="lightbox" class="lightbox hidden">
+    <button class="lb-close" id="lbClose">✕</button>
+    <button class="lb-nav lb-prev" id="lbPrev">‹</button>
+    <div class="lb-stage">
+      <img id="lbImage" alt="" />
+    </div>
+    <button class="lb-nav lb-next" id="lbNext">›</button>
+    <aside class="lb-panel" id="lbPanel"></aside>
+  </div>
+
+  <!-- PROJECT LAUNCHER (shown until a project is open) -->
+  <div id="projectLauncher" class="launcher hidden">
+    <div class="launcher-card">
+      <div class="launcher-head">
+        <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><g><path fill="#4285F4" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/><path fill="#EA4335" transform="rotate(90 12 12)" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/><path fill="#FBBC04" transform="rotate(180 12 12)" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/><path fill="#34A853" transform="rotate(270 12 12)" d="M12 12C8.4 11.4 8.4 4.8 12 3C15.6 4.8 15.6 11.4 12 12Z"/></g></svg>
+        <h2>Smart Gallery <span>Timeline</span></h2>
+        <p class="muted">Open a project, or create a new one. A project is a folder that holds
+          your imported photos plus its own catalog.</p>
+      </div>
+      <div class="launcher-actions">
+        <button id="lcNew" class="btn btn-primary">＋ New project</button>
+        <button id="lcOpen" class="btn">📂 Open project…</button>
+        <button id="lcDemo" class="btn btn-ghost">Try the demo library</button>
+      </div>
+      <div class="launcher-recent">
+        <h4>Recent projects</h4>
+        <div id="lcRecent" class="recent-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IMPORT DIALOG -->
+  <div id="importDialog" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" id="impClose">✕</button>
+      <h2>Import photos</h2>
+      <p class="muted">Photos are copied into this project's folder so the project stays self-contained.</p>
+      <div class="import-choices">
+        <button id="impFolders" class="btn btn-primary">📁 Choose folder(s)…</button>
+        <button id="impFiles" class="btn">🖼 Choose files…</button>
+      </div>
+      <div id="impFallback" class="import-fallback hidden">
+        <label>Folder path(s) — one per line:</label>
+        <textarea id="impPaths" rows="3" placeholder="C:\Users\me\Pictures\Trip"></textarea>
+        <button id="impFallbackGo" class="btn btn-primary btn-sm">Import these folders</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/projects.js"></script>
+  <script src="/js/timeline.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/clusters.js"></script>
+  <script src="/js/tagging.js"></script>
+  <script src="/js/slideshow.js"></script>
+</body>
+</html>

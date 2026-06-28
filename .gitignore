@@ -1,0 +1,7 @@
+node_modules/
+cache/
+dist-installer/
+data/runtime/
+*.log
+.DS_Store
+demo-photos/
