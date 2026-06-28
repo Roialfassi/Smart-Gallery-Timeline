@@ -101,7 +101,10 @@ input[type=checkbox], input[type=range] { accent-color: var(--accent); }
 .sidebar {
   width: 256px; flex-shrink: 0; background: var(--bg); border-right: 1px solid var(--border);
   padding: 18px 14px; overflow-y: auto;
+  transition: width .42s cubic-bezier(.4,0,.2,1), padding .42s cubic-bezier(.4,0,.2,1);
 }
+/* Map Focus collapses the filter sidebar so the photo gets the full width. */
+.layout.map-focus .sidebar { width: 0; padding-left: 0; padding-right: 0; overflow: hidden; }
 .stats-card {
   display: flex; gap: 4px; background: var(--surface-3);
   border-radius: var(--radius-lg); padding: 14px 8px; margin-bottom: 20px;
@@ -188,8 +191,61 @@ input[type=checkbox], input[type=range] { accent-color: var(--accent); }
 /* Map */
 .map-toolbar { padding: 10px 24px; border-bottom: 1px solid var(--border); background: var(--bg); display: flex; gap: 18px; align-items: center; }
 .leaflet-map { flex: 1; min-height: 0; }
+/* `isolation: isolate` keeps every Leaflet map's internal pane/control z-indexes
+   (200–1000) contained to its own stacking context. Without it those panes leak into
+   the root stacking context and paint over the lightbox (z-index 100) — so opening a
+   photo from a map marker (or a trip stop) showed map tiles/markers/zoom controls
+   bleeding through the popup. Applied to .leaflet-container so it covers every map. */
+.leaflet-container { isolation: isolate; }
 .switch { display: inline-flex; gap: 7px; align-items: center; font-size: 13px; cursor: pointer; color: var(--text); }
 .map-info { color: var(--muted); font-size: 12px; }
+
+/* Map Focus mode — clicking a marker shrinks the live map into the right rail and
+   blows the selected photo up beside it; the map flies between markers as you
+   navigate. The map element is never moved in the DOM — only the flex box around it
+   animates (flex-grow/basis), so the same Leaflet instance survives the transition. */
+.map-back { display: none; }
+#view-map.focused .map-back { display: inline-flex; }
+#view-map.focused .map-toolbar .switch,
+#view-map.focused .map-toolbar .map-info { display: none; }
+
+.map-focus-row { flex: 1; min-height: 0; display: flex; }
+
+.mf-stage {
+  position: relative; flex: 0 1 0px; min-width: 0; overflow: hidden; background: #202124;
+  transition: flex-grow .42s cubic-bezier(.4,0,.2,1);
+}
+#view-map.focused .mf-stage { flex-grow: 1; }
+.mf-imgwrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 26px; }
+.mf-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 50px rgba(0,0,0,.55); opacity: 0; transition: opacity .25s; }
+.mf-stage img.loaded { opacity: 1; }
+
+.mf-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 5;
+  width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255,255,255,.16); color: #fff; font-size: 24px; line-height: 0;
+  opacity: 0; pointer-events: none; transition: background .15s, opacity .2s;
+}
+#view-map.focused .mf-nav { opacity: 1; pointer-events: auto; }
+.mf-nav:hover { background: rgba(255,255,255,.3); }
+.mf-nav:disabled { opacity: .25; pointer-events: none; }
+.mf-prev { left: 14px; }
+.mf-next { right: 14px; }
+
+.mf-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 22px; background: linear-gradient(transparent, rgba(0,0,0,.66)); display: flex; flex-direction: column; gap: 2px; pointer-events: none; opacity: 0; transition: opacity .2s; }
+#view-map.focused .mf-caption { opacity: 1; }
+.mf-caption strong { font-size: 15px; color: #fff; word-break: break-word; }
+.mf-caption span { font-size: 12px; color: #dadce0; }
+
+.mf-rail { flex: 1 1 0px; min-width: 0; display: flex; flex-direction: column; transition: flex-grow .42s cubic-bezier(.4,0,.2,1), flex-basis .42s cubic-bezier(.4,0,.2,1); }
+#view-map.focused .mf-rail { flex-grow: 0; flex-basis: 380px; border-left: 1px solid var(--border); }
+#view-map.focused .mf-rail .leaflet-map { flex: 0 0 48%; border-bottom: 1px solid var(--border); }
+
+.mf-meta { display: none; }
+#view-map.focused .mf-meta { display: block; flex: 1 1 auto; overflow-y: auto; padding: 16px 18px; background: var(--surface); }
+.mf-meta h3 { font-size: 14px; font-weight: 500; margin: 0 0 2px; word-break: break-word; }
+.mf-meta .mf-sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+.mf-meta .mf-open { margin-top: 14px; }
 
 /* Clusters */
 .clusters-toolbar { padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--bg); display: flex; gap: 18px; align-items: center; }
@@ -398,8 +454,18 @@ input[type=checkbox], input[type=range] { accent-color: var(--accent); }
 .sd-headline h2 { margin: 0; font-size: 22px; font-weight: 500; color: var(--text); }
 .sd-headline .sd-flags { font-size: 18px; letter-spacing: 1px; }
 .sd-sub { font-size: 13px; color: var(--muted); }
-.sd-map { height: 220px; border-radius: 12px; margin-top: 14px; border: 1px solid var(--border); overflow: hidden; }
-.seg-detail-body { flex: 1; overflow-y: auto; padding: 8px 24px 24px; }
+/* Trip detail: photos scroll on the left, the route map is a boxy sticky rail on
+   the right. .sd-side is hidden for period segments (no route) → body goes full width. */
+.sd-split { flex: 1; min-height: 0; display: flex; }
+.seg-detail-body { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 24px 24px; }
+.sd-side { flex: 0 0 432px; min-width: 0; border-left: 1px solid var(--border); background: var(--surface); padding: 16px; overflow-y: auto; }
+/* Map scales with the rail width (kept boxy) so the drag resizer grows it both ways. */
+.sd-map { aspect-ratio: 1 / 1; max-height: 72vh; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; position: sticky; top: 0; }
+/* Drag handle between the photos and the map rail (timeline.js wires the drag). */
+.sd-resizer { flex: 0 0 7px; align-self: stretch; cursor: col-resize; position: relative; touch-action: none; }
+.sd-resizer::before { content: ""; position: absolute; top: 0; bottom: 0; left: 2px; right: 2px; border-radius: 3px; background: var(--border); opacity: 0; transition: opacity .15s, background .15s; }
+.sd-resizer:hover::before, .sd-resizer.dragging::before { opacity: 1; }
+.sd-resizer.dragging::before { background: var(--accent); }
 .stop-marker span {
   display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;
   background: var(--accent); color: #fff; border: 2px solid #fff; border-radius: 50%;

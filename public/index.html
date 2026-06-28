@@ -89,10 +89,17 @@
         <div id="wholeBody" class="seg-detail-body"></div>
       </div>
 
-      <!-- DETAIL: a single trip/period, start → finish -->
+      <!-- DETAIL: a single trip/period, start → finish. For trips the route map
+           sits in a boxy side rail beside the photos (period segments have none). -->
       <div id="momentsDetail" class="moments-detail hidden">
         <div id="segDetailHeader" class="seg-detail-header"></div>
-        <div id="segDetailBody" class="seg-detail-body"></div>
+        <div id="segDetailSplit" class="sd-split">
+          <div id="segDetailBody" class="seg-detail-body"></div>
+          <div id="sdResizer" class="sd-resizer hidden" title="Drag to resize the map · double-click to reset"></div>
+          <aside id="segDetailSide" class="sd-side hidden">
+            <div id="sdMap" class="sd-map"></div>
+          </aside>
+        </div>
       </div>
 
       <!-- FILTERED GRID: flat photo grid, shown when a filter / cluster / tag is active -->
@@ -109,13 +116,26 @@
       </div>
     </section>
 
-    <!-- MAP VIEW (Phase 2) -->
+    <!-- MAP VIEW (Phase 2) — clicking a marker shrinks the map into the side rail
+         and opens the photo beside it (Map Focus mode; see map.js). -->
     <section class="view" id="view-map">
       <div class="map-toolbar">
+        <button id="mapBack" class="btn btn-sm map-back">‹ Back to map</button>
         <label class="switch"><input type="checkbox" id="journeyToggle" checked /> Journey tracks</label>
         <span class="map-info" id="mapInfo"></span>
       </div>
-      <div id="leafletMap" class="leaflet-map"></div>
+      <div class="map-focus-row" id="mapFocusRow">
+        <div class="mf-stage" id="mfStage">
+          <button class="mf-nav mf-prev" id="mfPrev" aria-label="Previous photo">‹</button>
+          <div class="mf-imgwrap"><img id="mfImage" alt="" /></div>
+          <button class="mf-nav mf-next" id="mfNext" aria-label="Next photo">›</button>
+          <div class="mf-caption" id="mfCaption"></div>
+        </div>
+        <div class="mf-rail" id="mfRail">
+          <div id="leafletMap" class="leaflet-map"></div>
+          <div class="mf-meta" id="mfMeta"></div>
+        </div>
+      </div>
     </section>
 
     <!-- CLUSTERS VIEW (Phase 2) -->

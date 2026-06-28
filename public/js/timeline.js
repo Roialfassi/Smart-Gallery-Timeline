@@ -40,6 +40,8 @@ window.MomentsView = (function () {
   let curIndex = -1;
   let sdMap = null;
   let wired = false;
+  let resizerWired = false;
+  const SIDE_W_KEY = 'sgt.sdSideWidth'; // persisted route-map rail width (px)
 
   let regionNames = null;
   try { regionNames = new Intl.DisplayNames(undefined, { type: 'region' }); } catch (_) { /* older browser */ }
@@ -225,8 +227,7 @@ window.MomentsView = (function () {
         ${seg.kind === 'trip' ? '<span class="seg-kind">TRIP</span>' : ''}
         <h2><span class="sd-flags">${flagsOf(seg)}</span> ${segTitle(seg)}</h2>
         <div class="sd-sub">${segStats(seg)}</div>
-      </div>
-      ${seg.kind === 'trip' && seg.stops.length ? '<div id="sdMap" class="sd-map"></div>' : ''}`;
+      </div>`;
     $('#sdBack').addEventListener('click', backToOverview);
     const prev = $('#sdPrev');
     const next = $('#sdNext');
@@ -236,7 +237,12 @@ window.MomentsView = (function () {
 
   function renderMap(seg) {
     if (sdMap) { sdMap.remove(); sdMap = null; }
-    if (!(seg.kind === 'trip' && seg.stops.length && window.L)) return;
+    const side = $('#segDetailSide');
+    const isRoute = !!(seg.kind === 'trip' && seg.stops.length && window.L);
+    side.classList.toggle('hidden', !isRoute); // period segments have no route → photos full width
+    $('#sdResizer').classList.toggle('hidden', !isRoute);
+    if (!isRoute) return;
+    applySideWidth();
     const host = $('#sdMap');
     if (!host) return;
     sdMap = L.map(host, { attributionControl: false });
@@ -244,7 +250,9 @@ window.MomentsView = (function () {
     const pts = seg.stops.map((s) => [s.lat, s.lon]);
     if (pts.length >= 2) L.polyline(pts, { color: '#1a73e8', weight: 3, opacity: 0.85 }).addTo(sdMap);
     seg.stops.forEach((s, idx) => {
-      const icon = L.divIcon({ className: 'stop-marker', html: `<span>${idx + 1}</span>`, iconSize: [26, 26] });
+      // iconAnchor centres the 26×26 badge on the GPS point — without it the badge's
+      // top-left sat on the point, so every stop looked offset down-right.
+      const icon = L.divIcon({ className: 'stop-marker', html: `<span>${idx + 1}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] });
       const m = L.marker([s.lat, s.lon], { icon }).addTo(sdMap);
       m.bindTooltip(`Stop ${idx + 1} · ${App().fmtDateRange(s.start, s.end)} · ${s.count} photos`, { direction: 'top' });
       m.on('click', () => App().openLightbox(s.coverPhotoId));
@@ -252,7 +260,7 @@ window.MomentsView = (function () {
     setTimeout(() => {
       sdMap.invalidateSize();
       if (pts.length === 1) sdMap.setView(pts[0], 12);
-      else sdMap.fitBounds(pts, { padding: [34, 34], maxZoom: 12 });
+      else sdMap.fitBounds(pts, { padding: [30, 30], maxZoom: 12 });
     }, 60);
   }
 
@@ -305,6 +313,59 @@ window.MomentsView = (function () {
     });
   }
 
+  // Restore the user's saved map-rail width (a no-op until they've dragged once).
+  function applySideWidth() {
+    const side = $('#segDetailSide');
+    const w = parseInt(localStorage.getItem(SIDE_W_KEY), 10);
+    side.style.flexBasis = w >= 280 ? w + 'px' : '';
+  }
+
+  // Drag the handle between photos and the map rail to resize the map. The rail is
+  // on the right, so dragging left widens it; clamped to leave room for the photos.
+  // Width persists in localStorage; double-click resets to the default.
+  function wireResizer() {
+    if (resizerWired) return;
+    const rz = $('#sdResizer');
+    const side = $('#segDetailSide');
+    if (!rz || !side) return;
+    resizerWired = true;
+    let startX = 0, startW = 0, dragging = false;
+
+    const onMove = (e) => {
+      if (!dragging) return;
+      const splitW = $('#segDetailSplit').getBoundingClientRect().width;
+      const maxW = Math.max(320, splitW - 420); // keep at least ~420px for the photos
+      const w = Math.max(280, Math.min(maxW, startW - (e.clientX - startX)));
+      side.style.flexBasis = w + 'px';
+      if (sdMap) sdMap.invalidateSize({ animate: false });
+    };
+    const onUp = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      rz.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      try { rz.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+      localStorage.setItem(SIDE_W_KEY, String(parseInt(side.style.flexBasis, 10) || ''));
+      if (sdMap) setTimeout(() => sdMap.invalidateSize(), 50);
+    };
+    rz.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      startX = e.clientX;
+      startW = side.getBoundingClientRect().width;
+      rz.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      rz.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    rz.addEventListener('pointermove', onMove);
+    rz.addEventListener('pointerup', onUp);
+    rz.addEventListener('dblclick', () => {
+      localStorage.removeItem(SIDE_W_KEY);
+      side.style.flexBasis = '';
+      if (sdMap) setTimeout(() => sdMap.invalidateSize(), 50);
+    });
+  }
+
   /* -------------------------------- loaders -------------------------------- */
 
   async function loadSegments() {
@@ -353,6 +414,7 @@ window.MomentsView = (function () {
 
   function show() {
     wireToggle();
+    wireResizer();
     if (App().hasActiveFilter()) return enterGrid(false);
     if (mode === 'detail' && curIndex >= 0) return panes('detail');
     enterOverview(false);

@@ -299,6 +299,8 @@ function switchView(name) {
   if (location.hash !== `#${name}`) location.hash = name;
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
+  // Leaving the map clears any Map Focus state (restores the collapsed sidebar).
+  if (name !== 'map' && window.MapView && window.MapView.blur) window.MapView.blur();
   if (name === 'moments' && window.MomentsView) window.MomentsView.show();
   if (name === 'map' && window.MapView) window.MapView.show();
   if (name === 'clusters' && window.Clusters) window.Clusters.show();
