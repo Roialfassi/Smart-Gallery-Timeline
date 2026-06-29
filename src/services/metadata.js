@@ -56,11 +56,16 @@ function parseExifDateString(str) {
   };
 }
 
-async function extractMetadata(filePath) {
+async function extractMetadata(filePath, buffer) {
+  // When the caller already has the bytes (ingest reads each file once), parse
+  // from the in-memory buffer so sharp + the two exifr passes don't each re-open
+  // the file from disk.
+  const src = buffer || filePath;
+
   // Reliable dimensions + orientation via sharp (works across formats).
   let width = null, height = null, orientation = 1;
   try {
-    const m = await sharp(filePath, { failOn: 'none' }).metadata();
+    const m = await sharp(src, { failOn: 'none' }).metadata();
     width = m.width || null;
     height = m.height || null;
     orientation = m.orientation || 1;
@@ -68,13 +73,13 @@ async function extractMetadata(filePath) {
 
   let exif = {};
   try {
-    exif = (await exifr.parse(filePath, { tiff: true, ifd0: true, exif: true, gps: true })) || {};
+    exif = (await exifr.parse(src, { tiff: true, ifd0: true, exif: true, gps: true })) || {};
   } catch (_) { exif = {}; }
 
   // Raw (unrevived) date + offset strings for deterministic UTC normalization.
   let raw = {};
   try {
-    raw = (await exifr.parse(filePath, {
+    raw = (await exifr.parse(src, {
       pick: ['DateTimeOriginal', 'CreateDate', 'DateTime', 'OffsetTimeOriginal', 'OffsetTime'],
       reviveValues: false,
     })) || {};

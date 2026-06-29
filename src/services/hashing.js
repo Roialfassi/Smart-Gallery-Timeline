@@ -15,10 +15,12 @@ const crypto = require('crypto');
  * full-file hash so we never throw during ingestion.
  */
 
+function sha256Buffer(buf) {
+  return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
 function fullFileSha256(filePath) {
-  const hash = crypto.createHash('sha256');
-  hash.update(fs.readFileSync(filePath));
-  return hash.digest('hex');
+  return sha256Buffer(fs.readFileSync(filePath));
 }
 
 // --- JPEG: hash from Start-of-Scan (SOS, 0xFFDA) onward, skipping APPn/COM. ---
@@ -103,23 +105,29 @@ function hashWebp(buf) {
  * Compute the content hash for a file.
  * @param {string} filePath absolute path
  * @param {string} format normalized lowercase extension without dot (e.g. 'jpg')
+ * @param {Buffer} [buffer] the file's bytes, if already read (avoids a re-read —
+ *        the ingest pipeline reads each file once and threads the buffer through
+ *        hashing, metadata, and thumbnails)
  * @returns {string} hex SHA-256
  */
-function computeContentHash(filePath, format) {
+function computeContentHash(filePath, format, buffer) {
   const writable = format === 'jpg' || format === 'jpeg' || format === 'png' || format === 'webp';
-  if (!writable) return fullFileSha256(filePath);
+
+  let buf = buffer;
+  if (!writable) return buf ? sha256Buffer(buf) : fullFileSha256(filePath);
 
   try {
-    const buf = fs.readFileSync(filePath);
+    if (!buf) buf = fs.readFileSync(filePath);
     let result = null;
     if (format === 'jpg' || format === 'jpeg') result = hashJpeg(buf);
     else if (format === 'png') result = hashPng(buf);
     else if (format === 'webp') result = hashWebp(buf);
     if (result) return result;
+    return sha256Buffer(buf); // structural parse failed but bytes are in hand
   } catch (_) {
     // fall through to full-file
   }
   return fullFileSha256(filePath);
 }
 
-module.exports = { computeContentHash, fullFileSha256 };
+module.exports = { computeContentHash, fullFileSha256, sha256Buffer };

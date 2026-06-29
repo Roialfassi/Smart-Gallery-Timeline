@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
 const config = require('../config');
@@ -34,10 +35,14 @@ function thumbFile(hash, sizeType) {
   return path.join(runtimePaths.paths().thumbnailDir, `${safe}_${sizeType}.jpg`);
 }
 
+function thumbReady(file) {
+  try { return fs.statSync(file).size > 0; } catch (_) { return false; }
+}
+
 async function renderTier(srcPath, hash, sizeType) {
   const tier = TIERS[sizeType];
   const out = thumbFile(hash, sizeType);
-  if (fs.existsSync(out) && fs.statSync(out).size > 0) return out;
+  if (thumbReady(out)) return out;
   await sharp(srcPath, { failOn: 'none' })
     .rotate() // auto-orient using EXIF orientation
     .resize({ width: tier.width, withoutEnlargement: true })
@@ -47,10 +52,61 @@ async function renderTier(srcPath, hash, sizeType) {
 }
 
 /**
- * Generate both tiers for a photo row and upsert thumbnail_cache entries.
- * Returns true on success, false if the source could not be decoded.
+ * Render both thumbnail tiers for a content hash, decoding the source ONCE.
+ *
+ * The full-resolution source is decoded a single time into the PREVIEW (800px)
+ * buffer; the MICRO (150px) tier is then derived from that already-decoded
+ * preview rather than decoding the multi-megapixel original a second time. Tiers
+ * already present on disk (keyed by content hash) are reused, so a moved/renamed
+ * file — or a re-scan — costs nothing here.
+ *
+ * Pure I/O: writes the hash-named jpgs and returns their paths; it touches no DB
+ * row, so it is safe to run on the threadpool in parallel ahead of the (serial)
+ * thumbnail_cache bookkeeping in `recordThumbnails`.
+ *
+ * @param {string|Buffer} input source path or already-read bytes
+ * @returns {Promise<{MICRO?:string, PREVIEW?:string}>} paths of rendered tiers
  */
-async function generateForPhoto(photo) {
+async function renderTiers(input, hash) {
+  const out = { MICRO: thumbFile(hash, 'MICRO'), PREVIEW: thumbFile(hash, 'PREVIEW') };
+  const result = {};
+  if (thumbReady(out.MICRO)) result.MICRO = out.MICRO;
+  if (thumbReady(out.PREVIEW)) result.PREVIEW = out.PREVIEW;
+  if (result.MICRO && result.PREVIEW) return result;
+
+  let previewBuf = null;
+  if (!result.PREVIEW) {
+    try {
+      previewBuf = await sharp(input, { failOn: 'none' })
+        .rotate()
+        .resize({ width: TIERS.PREVIEW.width, withoutEnlargement: true })
+        .jpeg({ quality: TIERS.PREVIEW.quality })
+        .toBuffer();
+      await fsp.writeFile(out.PREVIEW, previewBuf);
+      result.PREVIEW = out.PREVIEW;
+    } catch (_) { /* unsupported/corrupt source — non-fatal */ }
+  }
+
+  if (!result.MICRO) {
+    try {
+      // Derive MICRO from the freshly-decoded (already oriented) preview buffer
+      // when available, so we avoid a second full-resolution decode. previewBuf
+      // carries no EXIF, so the .rotate() below is a harmless no-op for it and a
+      // proper auto-orient when we fall back to the original source.
+      const microInput = previewBuf || input;
+      await sharp(microInput, { failOn: 'none' })
+        .rotate()
+        .resize({ width: TIERS.MICRO.width, withoutEnlargement: true })
+        .jpeg({ quality: TIERS.MICRO.quality })
+        .toFile(out.MICRO);
+      result.MICRO = out.MICRO;
+    } catch (_) { /* non-fatal */ }
+  }
+  return result;
+}
+
+/** Upsert thumbnail_cache rows for already-rendered tier files (serial / DB). */
+function recordThumbnails(photoId, files) {
   const db = getDb();
   const now = new Date().toISOString();
   const upsert = db.prepare(`
@@ -58,16 +114,20 @@ async function generateForPhoto(photo) {
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(photo_id, size_type) DO UPDATE SET file_path = excluded.file_path
   `);
-  let ok = true;
   for (const sizeType of Object.keys(TIERS)) {
-    try {
-      const file = await renderTier(photo.file_path, photo.content_hash, sizeType);
-      upsert.run(photo.id, sizeType, file, now, now);
-    } catch (_) {
-      ok = false; // unsupported/corrupt source — non-fatal
-    }
+    if (files[sizeType]) upsert.run(photoId, sizeType, files[sizeType], now, now);
   }
-  return ok;
+  return !!(files.MICRO && files.PREVIEW);
+}
+
+/**
+ * Generate both tiers for a photo row and upsert thumbnail_cache entries.
+ * Returns true on success, false if the source could not be decoded.
+ * @param {Buffer} [buffer] source bytes if already read (avoids a disk re-read)
+ */
+async function generateForPhoto(photo, buffer) {
+  const files = await renderTiers(buffer || photo.file_path, photo.content_hash);
+  return recordThumbnails(photo.id, files);
 }
 
 /**
@@ -140,4 +200,7 @@ function enforceLruEviction() {
   return { evicted, total };
 }
 
-module.exports = { generateForPhoto, resolveThumbnail, enforceLruEviction, thumbFile };
+module.exports = {
+  generateForPhoto, resolveThumbnail, enforceLruEviction, thumbFile,
+  renderTiers, recordThumbnails,
+};

@@ -18,6 +18,7 @@ const config = require('../config');
  */
 
 let dataset = null;
+let isoToName = null;
 
 function load() {
   if (dataset !== null) return dataset;
@@ -26,6 +27,10 @@ function load() {
     dataset = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (_) {
     dataset = { countries: [] };
+  }
+  isoToName = new Map();
+  for (const c of dataset.countries) {
+    if (c.iso && c.name) isoToName.set(c.iso, c.name);
   }
   return dataset;
 }
@@ -61,8 +66,29 @@ function countryForCoord(latitude, longitude) {
   return null;
 }
 
+// Common short forms for countries the dataset stores in verbose long form, so a
+// label reads "California, United States" rather than "...United States of
+// America". Keyed by ISO code (robust to the dataset's exact spelling).
+const SHORT_NAMES = {
+  US: 'United States', RU: 'Russia', KR: 'South Korea', KP: 'North Korea',
+  IR: 'Iran', VN: 'Vietnam', LA: 'Laos', SY: 'Syria', BO: 'Bolivia',
+  VE: 'Venezuela', TZ: 'Tanzania', MD: 'Moldova', CD: 'DR Congo',
+};
+
+/**
+ * Human-readable country name for an ISO 2-letter code (e.g. 'FR' -> 'France'),
+ * sourced from the same bundled dataset used for reverse geocoding. Falls back to
+ * the code itself when unknown, so callers can use it unconditionally.
+ */
+function countryName(iso) {
+  if (!iso) return null;
+  if (SHORT_NAMES[iso]) return SHORT_NAMES[iso];
+  load();
+  return isoToName.get(iso) || iso;
+}
+
 function isLoaded() {
   return load().countries.length > 0;
 }
 
-module.exports = { countryForCoord, isLoaded };
+module.exports = { countryForCoord, countryName, isLoaded };

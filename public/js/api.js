@@ -41,10 +41,24 @@ const API = {
   thumb: (id, size) => `/api/thumb/${id}?size=${size || 'MICRO'}`,
   original: (id) => `/api/original/${id}`,
 
-  // Moments timeline (trip/period segments)
-  segments: () => API.get('/api/segments'),
-  segmentsFull: () => API.get('/api/segments?withPhotos=1'),
-  segmentPhotos: (id) => API.get(`/api/segments/photos?id=${encodeURIComponent(id)}`),
+  // Unified zoomable Timeline (spatiotemporal groups). `extra` carries the active
+  // sidebar filters so groups respect them.
+  groups: (mode, step, extra, withPhotos) => {
+    const qs = new URLSearchParams({ mode, step, ...(extra || {}) });
+    if (withPhotos) qs.set('withPhotos', '1');
+    return API.get(`/api/groups?${qs.toString()}`);
+  },
+  groupPhotos: (mode, step, id, extra) => {
+    const qs = new URLSearchParams({ mode, step, id, ...(extra || {}) });
+    return API.get(`/api/groups/photos?${qs.toString()}`);
+  },
+
+  // Keyword intersections (Apriori itemsets) — now surfaced inside the Timeline view.
+  words: (extra) => {
+    const qs = new URLSearchParams(Object.entries(extra || {}).filter(([, v]) => v != null && v !== ''));
+    const s = qs.toString();
+    return API.get('/api/clusters/words' + (s ? `?${s}` : ''));
+  },
 
   // Host folder browser (New/Open project picker)
   fsList: (path) => API.get('/api/fs/list' + (path ? '?path=' + encodeURIComponent(path) : '')),

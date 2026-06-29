@@ -18,9 +18,8 @@
       <h1>Smart Gallery <span>Timeline</span></h1>
     </div>
     <nav class="tabs" id="tabs">
-      <button class="tab active" data-view="moments">Moments</button>
+      <button class="tab active" data-view="moments">Timeline</button>
       <button class="tab" data-view="map">Map &amp; Journeys</button>
-      <button class="tab" data-view="clusters">Clusters</button>
       <button class="tab" data-view="slideshow">Slideshow</button>
     </nav>
     <div class="topbar-actions" id="topbarActions">
@@ -64,15 +63,38 @@
       </section>
     </aside>
 
-    <!-- MOMENTS VIEW — trip/period segmented timeline -->
+    <!-- TIMELINE VIEW — unified zoomable spatiotemporal grouping -->
     <section class="view active" id="view-moments">
-      <!-- Overview toolbar: whole continuous timeline vs grouped cards -->
+      <!-- Toolbar: Time/Space+Time mode · granularity slider · spine/cards · keywords -->
       <div class="moments-toolbar hidden" id="momentsToolbar">
-        <div class="seg-toggle" id="segToggle">
-          <button class="seg-toggle-btn" data-mode="whole">Timeline</button>
-          <button class="seg-toggle-btn active" data-mode="grouped">Grouped</button>
+        <div class="seg-toggle" id="modeToggle" title="Group by time only, or by location and time together">
+          <button class="seg-toggle-btn active" data-mode="time">Time</button>
+          <button class="seg-toggle-btn" data-mode="spacetime">Space + Time</button>
         </div>
+
+        <div class="gran-control" title="Drag to zoom the grouping from fine events out to whole years">
+          <span class="gran-cap">narrow</span>
+          <div class="gran-slot">
+            <input type="range" id="granSlider" min="0" max="24" step="1" value="8" />
+            <div class="gran-ticks" id="granTicks"></div>
+          </div>
+          <span class="gran-cap">wide</span>
+          <span class="gran-tier" id="granTier">Trip</span>
+        </div>
+
+        <div class="seg-toggle" id="viewToggle" title="One continuous spine, or a grid of group cards">
+          <button class="seg-toggle-btn" data-view-mode="whole">Spine</button>
+          <button class="seg-toggle-btn active" data-view-mode="grouped">Cards</button>
+        </div>
+
         <span class="moments-hint" id="momentsHint"></span>
+        <button id="kwBtn" class="btn btn-sm" title="Keyword intersections mined from folder tags">＃ Keywords</button>
+      </div>
+
+      <!-- KEYWORD INTERSECTIONS (Apriori) — folded in from the old Clusters tab -->
+      <div id="kwPanel" class="kw-panel hidden">
+        <h3>Keyword intersections</h3>
+        <div id="tagMatrix" class="tag-matrix"></div>
       </div>
 
       <!-- RAIL: trip & period cards (grouped overview) -->
@@ -134,24 +156,6 @@
         <div class="mf-rail" id="mfRail">
           <div id="leafletMap" class="leaflet-map"></div>
           <div class="mf-meta" id="mfMeta"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- CLUSTERS VIEW (Phase 2) -->
-    <section class="view" id="view-clusters">
-      <div class="clusters-toolbar">
-        <label>Cluster radius:
-          <input type="range" id="radiusSlider" min="50" max="50000" step="50" value="300" />
-          <span id="radiusValue">300 m</span>
-        </label>
-        <button id="recomputeClusters" class="btn btn-sm">Recompute</button>
-      </div>
-      <div class="clusters-layout">
-        <div id="clusterList" class="cluster-list"></div>
-        <div id="wordCloud" class="word-cloud">
-          <h3>Keyword Intersections</h3>
-          <div id="tagMatrix" class="tag-matrix"></div>
         </div>
       </div>
     </section>

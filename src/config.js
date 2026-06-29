@@ -55,6 +55,11 @@ const config = {
     THUMBNAIL_PREVIEW_QUALITY: 80,
     DUPLICATE_STRATEGY: 'index_all_reference_hash',
     IGNORE_EXTENSIONS: ['.tmp', '.lock', '.bak'],
+    // How many photos the ingest pipeline hashes/decodes/thumbnails in parallel.
+    // DB writes stay serialized; this only fans out the file I/O + sharp/exifr
+    // work onto the libuv threadpool. Clamped to [2, 8] around the core count so
+    // a laptop doesn't thrash and a big box still saturates.
+    SCAN_CONCURRENCY: Math.max(2, Math.min(8, (os.cpus() || []).length || 4)),
   },
 
   tagging: {
@@ -70,6 +75,26 @@ const config = {
   clustering: {
     JACCARD_STABLE_THRESHOLD: 0.5,
     CENTROID_SHIFT_STABLE_METERS: 100,
+  },
+
+  // Unified spatiotemporal grouping for the zoomable Timeline view. The catalog
+  // is walked chronologically and split wherever the gap to the next photo is
+  // "too big" for the current granularity. A single slider scales BOTH the time
+  // and distance thresholds together (tau = max time gap, delta = max location
+  // jump); the named TIERS are the anchor stops the slider snaps its label to,
+  // and intermediate positions log-interpolate between neighbouring anchors.
+  // Wider scale => bigger thresholds => fewer/larger groups (monotonic: zooming
+  // only ever merges or splits, never reshuffles). In 'time' mode delta is
+  // ignored; in 'spacetime' mode a break fires when EITHER threshold is crossed.
+  grouping: {
+    TIERS: [
+      { name: 'Event', tau: 2 * 3600e3, delta: 1000 },          // a few hours / one place
+      { name: 'Trip', tau: 3 * 24 * 3600e3, delta: 50000 },     // days away / a city
+      { name: 'Month', tau: 12 * 24 * 3600e3, delta: 400000 },  // a month / a region
+      { name: 'Year', tau: 90 * 24 * 3600e3, delta: 3000000 },  // a year / a country-hop
+    ],
+    STEPS: 24,           // slider resolution between the first and last tier
+    DEFAULT_STEP: 8,     // initial position (~"Trip")
   },
 
   cache: {

@@ -1,19 +1,19 @@
 'use strict';
 
 /*
- * Moments view — the primary tab. Groups the library into server-detected
- * segments (trips + everyday period buckets) and offers two overview modes plus
- * a per-segment detail:
+ * Timeline view — the unified zoomable spatiotemporal grouping (successor to the
+ * old Moments + Clusters split). One chronological spine; a single granularity
+ * slider scales the grouping from fine events out to whole years, and a Time /
+ * Space+Time toggle decides whether location participates.
  *
- *   whole   — the ENTIRE project as one continuous timeline (oldest → newest),
- *             each segment a banner you can dive into. Auto-chosen when the
- *             library is small enough to "fit" (<= WHOLE_MAX photos).
- *   grouped — a rail of trip/period cards; click one to open it.
- *   detail  — a single segment, start → finish, with a route map for trips.
- *   grid    — the flat infinite-scroll grid (when a filter/cluster/tag is on).
+ *   spine   — the ENTIRE project as one continuous timeline (oldest → newest),
+ *             each group a banner you can dive into.
+ *   cards   — a grid of group cards; click one to open it.
+ *   detail  — a single group, start → finish, with a route map when it moves.
+ *   grid    — the flat infinite-scroll grid (when a sidebar filter/tag is on).
  *
- * Whole vs grouped is a toggle in the toolbar; segmentation is a divisible
- * drill-down, not a mandatory split.
+ * Groups come from /api/groups at the current (mode, step). Diving into a group
+ * fetches its photos; the slider and mode are the primary controls.
  */
 
 window.MomentsView = (function () {
@@ -26,22 +26,27 @@ window.MomentsView = (function () {
     return e;
   };
 
-  const WHOLE_MAX = 400; // libraries this size or smaller default to one continuous timeline
+  const WHOLE_MAX = 400;     // libraries this size or smaller default to the spine
+  const STOP_MERGE_KM = 25;  // detail route: photos within this join one "stop"
 
-  let segments = [];      // lightweight cards (rail + detail nav)
-  let wholeSegments = []; // segments with inlined photos (whole view)
-  let home = null;
+  let mode = 'time';         // 'time' | 'spacetime'
+  let step = 8;              // granularity slider position
+  let steps = 24;            // slider max (from the API)
+  let tiers = ['Event', 'Trip', 'Month', 'Year'];
+
+  let groups = [];           // lightweight cards (cards rail + detail nav)
+  let wholeGroups = [];      // groups with inlined photos (spine view)
   let total = 0;
-  let loaded = false;
-  let wholeLoaded = false;
-  let gridLoaded = false;
-  let overview = null;    // null = auto-decide; otherwise 'whole' | 'grouped'
-  let mode = 'rail';      // 'rail' | 'whole' | 'detail' | 'grid'
+  let tierName = '';
+  let view = 'rail';         // 'rail' | 'whole' | 'detail' | 'grid'
+  let display = null;        // null = auto; otherwise 'whole' | 'grouped'
   let curIndex = -1;
+  let gridLoaded = false;
   let sdMap = null;
   let wired = false;
   let resizerWired = false;
-  const SIDE_W_KEY = 'sgt.sdSideWidth'; // persisted route-map rail width (px)
+  let loadSeq = 0;           // guards against out-of-order async loads while dragging
+  const SIDE_W_KEY = 'sgt.sdSideWidth';
 
   let regionNames = null;
   try { regionNames = new Intl.DisplayNames(undefined, { type: 'region' }); } catch (_) { /* older browser */ }
@@ -52,37 +57,53 @@ window.MomentsView = (function () {
 
   /* -------------------------------- labels --------------------------------- */
 
-  function segTitle(seg) {
-    if (seg.kind === 'trip') {
-      const names = seg.countries.map(countryName).filter(Boolean);
-      if (!names.length) return 'Trip';
-      if (names.length <= 3) return names.join(' · ');
-      return `${names.slice(0, 2).join(' · ')} +${names.length - 2}`;
-    }
-    const d = new Date(seg.start);
-    if (seg.periodKind === 'week') {
-      return 'Week of ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-    }
-    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  }
+  const flagsOf = (g) => (g.countries || []).map(COUNTRY_FLAG).join(' ');
 
-  function segStats(seg) {
-    const range = App().fmtDateRange(seg.start, seg.end);
-    if (seg.kind !== 'trip') return `${range} · ${seg.photoCount} photos`;
-    const days = Math.round((new Date(seg.end) - new Date(seg.start)) / 86400000) + 1;
-    const bits = [range, `${days} day${days > 1 ? 's' : ''}`, `${seg.stops.length} stop${seg.stops.length !== 1 ? 's' : ''}`, `${seg.photoCount} photos`];
-    if (seg.km) bits.push(`${seg.km} km`);
+  // Server picks the title (place in space+time, else the date range). The stats
+  // line carries whatever the title didn't.
+  function groupTitle(g) { return g.title || g.dateLabel || 'Group'; }
+
+  function groupStats(g) {
+    const bits = [];
+    if (g.title !== g.dateLabel) bits.push(g.dateLabel);
+    if (g.isGeo) {
+      const days = Math.round((new Date(g.end) - new Date(g.start)) / 86400000) + 1;
+      if (days > 1) bits.push(`${days} days`);
+    }
+    bits.push(`${g.photoCount} photo${g.photoCount !== 1 ? 's' : ''}`);
+    if (g.km) bits.push(`${g.km} km`);
     return bits.join(' · ');
   }
 
-  const flagsOf = (seg) => seg.countries.map(COUNTRY_FLAG).join(' ');
-  const titleHtml = (seg) => `${flagsOf(seg) ? `<span class="seg-flags">${flagsOf(seg)}</span> ` : ''}${segTitle(seg)}`;
+  const titleHtml = (g) => `${flagsOf(g) ? `<span class="seg-flags">${flagsOf(g)}</span> ` : ''}${App().esc(groupTitle(g))}`;
+
+  /* ----------------------- detail route: derive stops ---------------------- */
+
+  const RAD = (d) => (d * Math.PI) / 180;
+  function haversineKm(aLat, aLon, bLat, bLon) {
+    const dLat = RAD(bLat - aLat), dLon = RAD(bLon - aLon);
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(RAD(aLat)) * Math.cos(RAD(bLat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(x)));
+  }
+
+  // Collapse a group's GPS photos into ordered stops for the route map / grouping.
+  function stopsFromPhotos(photos) {
+    const stops = [];
+    let cur = null;
+    for (const p of photos) {
+      if (p.latitude == null) { if (cur) cur.count++; continue; }
+      if (cur && haversineKm(p.latitude, p.longitude, cur.sLat / cur.gps, cur.sLon / cur.gps) > STOP_MERGE_KM) cur = null;
+      if (!cur) { cur = { sLat: 0, sLon: 0, gps: 0, count: 0, start: p.date_taken, end: p.date_taken, country: p.country_code, coverPhotoId: p.id }; stops.push(cur); }
+      cur.sLat += p.latitude; cur.sLon += p.longitude; cur.gps++; cur.count++;
+      cur.end = p.date_taken;
+      if (p.country_code) cur.country = p.country_code;
+    }
+    return stops.map((s) => ({ lat: s.sLat / s.gps, lon: s.sLon / s.gps, start: s.start, end: s.end, count: s.count, country: s.country, coverPhotoId: s.coverPhotoId }));
+  }
 
   /* ------------------------------ photo groups ----------------------------- */
 
-  // A trip splits into its ordered stops; everything else splits by day.
-  function stopGroups(seg, photos) {
-    const stops = seg.stops;
+  function stopGroups(stops, photos) {
     let si = 0;
     const buckets = stops.map((s) => ({ stop: s, photos: [] }));
     for (const p of photos) {
@@ -90,16 +111,15 @@ window.MomentsView = (function () {
       buckets[si].photos.push(p);
     }
     return buckets.filter((b) => b.photos.length).map((b, i) => ({
-      title: `Stop ${i + 1}`,
-      meta: `${b.stop.country ? COUNTRY_FLAG(b.stop.country) + ' ' : ''}${App().fmtDateRange(b.stop.start, b.stop.end)} · ${b.photos.length} photos`,
+      title: `Stop ${i + 1}${b.stop.country ? ' · ' + COUNTRY_FLAG(b.stop.country) : ''}`,
+      meta: `${App().fmtDateRange(b.stop.start, b.stop.end)} · ${b.photos.length} photos`,
       photos: b.photos,
     }));
   }
 
   function dayGroups(photos) {
     const out = [];
-    let key = null;
-    let cur = null;
+    let key = null, cur = null;
     for (const p of photos) {
       const k = p.date_taken.slice(0, 10);
       if (k !== key) { key = k; cur = { day: p.date_taken, photos: [], cc: new Set() }; out.push(cur); }
@@ -113,25 +133,31 @@ window.MomentsView = (function () {
     }));
   }
 
-  const groupsFor = (seg, photos) => (seg.kind === 'trip' && seg.stops.length) ? stopGroups(seg, photos) : dayGroups(photos);
+  // Space+time groups that actually moved split into stops; everything else by day.
+  function groupsFor(g, photos) {
+    if (mode === 'spacetime' && g.isGeo) {
+      const stops = stopsFromPhotos(photos);
+      if (stops.length > 1) return stopGroups(stops, photos);
+    }
+    return dayGroups(photos);
+  }
 
-  function groupEls(groups) {
-    return groups.map((g) => {
+  function groupEls(blocks) {
+    return blocks.map((b) => {
       const grp = el('div', 'day-group');
-      grp.appendChild(el('div', 'day-header', `<h2>${g.title}</h2><span class="day-meta">${g.meta}</span>`));
+      grp.appendChild(el('div', 'day-header', `<h2>${App().esc(b.title)}</h2><span class="day-meta">${App().esc(b.meta)}</span>`));
       const ph = el('div', 'day-photos');
-      for (const p of g.photos) ph.appendChild(App().tile(p));
+      for (const p of b.photos) ph.appendChild(App().tile(p));
       grp.appendChild(ph);
       return grp;
     });
   }
 
-  function renderGroups(host, groups) {
+  function renderBlocks(host, blocks) {
     host.innerHTML = '';
-    for (const e of groupEls(groups)) host.appendChild(e);
+    for (const e of groupEls(blocks)) host.appendChild(e);
   }
 
-  // Point the lightbox's prev/next at a fixed photo list (no infinite scroll).
   function bindLightboxList(photos) {
     const st = App().state;
     st.photos = photos;
@@ -140,72 +166,69 @@ window.MomentsView = (function () {
     st.cursor = null;
   }
 
-  /* ----------------------------- grouped (rail) ---------------------------- */
+  /* ----------------------------- cards (rail) ------------------------------ */
 
-  function railCard(seg, i) {
-    const card = el('div', 'seg-card ' + (seg.kind === 'trip' ? 'seg-trip' : 'seg-period'));
-    card.dataset.id = seg.id;
+  function railCard(g, i) {
+    const card = el('div', 'seg-card ' + (mode === 'spacetime' && g.isGeo ? 'seg-trip' : 'seg-period'));
+    card.dataset.id = g.id;
 
     const cover = el('div', 'seg-cover');
     const img = el('img');
     img.loading = 'lazy';
-    img.src = API.thumb(seg.coverPhotoId, 'PREVIEW');
+    img.src = API.thumb(g.coverPhotoId, 'PREVIEW');
     img.addEventListener('load', () => img.classList.add('loaded'));
     cover.appendChild(img);
-    if (seg.kind === 'trip') cover.appendChild(el('span', 'seg-kind', 'TRIP'));
+    if (g.isGeo && g.km) cover.appendChild(el('span', 'seg-kind', `${g.km} KM`));
 
     const body = el('div', 'seg-body');
-    body.appendChild(el('h3', 'seg-title', titleHtml(seg)));
-    body.appendChild(el('div', 'seg-stats', segStats(seg)));
+    body.appendChild(el('h3', 'seg-title', titleHtml(g)));
+    body.appendChild(el('div', 'seg-stats', App().esc(groupStats(g))));
 
     const strip = el('div', 'seg-strip');
-    for (const id of seg.previewIds) {
-      const t = el('img');
-      t.loading = 'lazy';
-      t.src = API.thumb(id, 'MICRO');
+    for (const id of (g.previewIds || [])) {
+      const t = el('img'); t.loading = 'lazy'; t.src = API.thumb(id, 'MICRO');
       strip.appendChild(t);
     }
     body.appendChild(strip);
 
     card.appendChild(cover);
     card.appendChild(body);
-    card.addEventListener('click', () => openSegment(i));
+    card.addEventListener('click', () => openGroup(i));
     return card;
   }
 
   function renderRail() {
     const host = $('#segRail');
     host.innerHTML = '';
-    $('#segEmpty').classList.toggle('hidden', segments.length > 0);
-    segments.forEach((seg, i) => host.appendChild(railCard(seg, i)));
+    $('#segEmpty').classList.toggle('hidden', groups.length > 0);
+    groups.forEach((g, i) => host.appendChild(railCard(g, i)));
   }
 
-  /* ------------------------- whole (continuous spine) ---------------------- */
+  /* ------------------------- spine (continuous) ---------------------------- */
 
   function renderWhole() {
     const host = $('#wholeBody');
     host.innerHTML = '';
-    if (!wholeSegments.length) {
+    if (!wholeGroups.length) {
       host.appendChild(el('div', 'empty-state', '<p>No photos yet.</p><p class="muted">Use <strong>＋ Import photos</strong> to build your timeline.</p>'));
       return;
     }
-    const asc = wholeSegments.slice().reverse(); // oldest → newest
+    const asc = wholeGroups.slice().reverse(); // oldest → newest
     const all = [];
-    asc.forEach((s) => s.photos.forEach((p) => all.push(p)));
+    asc.forEach((g) => g.photos.forEach((p) => all.push(p)));
     bindLightboxList(all);
 
-    for (const seg of asc) {
-      const i = segments.findIndex((c) => c.id === seg.id); // canonical index for dive-in
-      const section = el('div', 'whole-seg' + (seg.kind === 'trip' ? ' is-trip' : ''));
+    for (const g of asc) {
+      const i = groups.findIndex((c) => c.id === g.id);
+      const section = el('div', 'whole-seg' + (mode === 'spacetime' && g.isGeo ? ' is-trip' : ''));
       const banner = el('div', 'whole-banner');
       banner.appendChild(el('div', 'wb-info',
-        `<h3 class="wb-title">${seg.kind === 'trip' ? '<span class="seg-kind">TRIP</span> ' : ''}${titleHtml(seg)}</h3>` +
-        `<div class="wb-stats">${segStats(seg)}</div>`));
-      const open = el('button', 'btn btn-sm wb-open', seg.kind === 'trip' ? 'Open trip ›' : 'Open ›');
-      open.addEventListener('click', (e) => { e.stopPropagation(); openSegment(i); });
+        `<h3 class="wb-title">${titleHtml(g)}</h3><div class="wb-stats">${App().esc(groupStats(g))}</div>`));
+      const open = el('button', 'btn btn-sm wb-open', 'Open ›');
+      open.addEventListener('click', (e) => { e.stopPropagation(); if (i >= 0) openGroup(i); });
       banner.appendChild(open);
       section.appendChild(banner);
-      for (const g of groupEls(groupsFor(seg, seg.photos))) section.appendChild(g);
+      for (const e of groupEls(groupsFor(g, g.photos))) section.appendChild(e);
       host.appendChild(section);
     }
     host.scrollTop = 0;
@@ -213,33 +236,32 @@ window.MomentsView = (function () {
 
   /* -------------------------------- detail --------------------------------- */
 
-  function renderHeader(seg, i) {
+  function renderHeader(g, i) {
     const head = $('#segDetailHeader');
     head.innerHTML = `
       <div class="sd-top">
-        <button class="btn btn-sm" id="sdBack">‹ All moments</button>
+        <button class="btn btn-sm" id="sdBack">‹ All groups</button>
         <div class="sd-nav">
           <button class="btn btn-sm" id="sdPrev" ${i <= 0 ? 'disabled' : ''}>‹ Newer</button>
-          <button class="btn btn-sm" id="sdNext" ${i >= segments.length - 1 ? 'disabled' : ''}>Older ›</button>
+          <button class="btn btn-sm" id="sdNext" ${i >= groups.length - 1 ? 'disabled' : ''}>Older ›</button>
         </div>
       </div>
       <div class="sd-headline">
-        ${seg.kind === 'trip' ? '<span class="seg-kind">TRIP</span>' : ''}
-        <h2><span class="sd-flags">${flagsOf(seg)}</span> ${segTitle(seg)}</h2>
-        <div class="sd-sub">${segStats(seg)}</div>
+        <h2><span class="sd-flags">${flagsOf(g)}</span> ${App().esc(groupTitle(g))}</h2>
+        <div class="sd-sub">${App().esc(groupStats(g))}</div>
       </div>`;
     $('#sdBack').addEventListener('click', backToOverview);
-    const prev = $('#sdPrev');
-    const next = $('#sdNext');
-    if (prev && !prev.disabled) prev.addEventListener('click', () => openSegment(i - 1));
-    if (next && !next.disabled) next.addEventListener('click', () => openSegment(i + 1));
+    const prev = $('#sdPrev'), next = $('#sdNext');
+    if (prev && !prev.disabled) prev.addEventListener('click', () => openGroup(i - 1));
+    if (next && !next.disabled) next.addEventListener('click', () => openGroup(i + 1));
   }
 
-  function renderMap(seg) {
+  function renderMap(photos) {
     if (sdMap) { sdMap.remove(); sdMap = null; }
+    const stops = (mode === 'spacetime' || photos.some((p) => p.latitude != null)) ? stopsFromPhotos(photos) : [];
     const side = $('#segDetailSide');
-    const isRoute = !!(seg.kind === 'trip' && seg.stops.length && window.L);
-    side.classList.toggle('hidden', !isRoute); // period segments have no route → photos full width
+    const isRoute = !!(stops.length && window.L);
+    side.classList.toggle('hidden', !isRoute);
     $('#sdResizer').classList.toggle('hidden', !isRoute);
     if (!isRoute) return;
     applySideWidth();
@@ -247,11 +269,9 @@ window.MomentsView = (function () {
     if (!host) return;
     sdMap = L.map(host, { attributionControl: false });
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18 }).addTo(sdMap);
-    const pts = seg.stops.map((s) => [s.lat, s.lon]);
+    const pts = stops.map((s) => [s.lat, s.lon]);
     if (pts.length >= 2) L.polyline(pts, { color: '#1a73e8', weight: 3, opacity: 0.85 }).addTo(sdMap);
-    seg.stops.forEach((s, idx) => {
-      // iconAnchor centres the 26×26 badge on the GPS point — without it the badge's
-      // top-left sat on the point, so every stop looked offset down-right.
+    stops.forEach((s, idx) => {
       const icon = L.divIcon({ className: 'stop-marker', html: `<span>${idx + 1}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] });
       const m = L.marker([s.lat, s.lon], { icon }).addTo(sdMap);
       m.bindTooltip(`Stop ${idx + 1} · ${App().fmtDateRange(s.start, s.end)} · ${s.count} photos`, { direction: 'top' });
@@ -259,23 +279,23 @@ window.MomentsView = (function () {
     });
     setTimeout(() => {
       sdMap.invalidateSize();
-      if (pts.length === 1) sdMap.setView(pts[0], 12);
+      if (pts.length === 1) sdMap.setView(pts[0], 11);
       else sdMap.fitBounds(pts, { padding: [30, 30], maxZoom: 12 });
     }, 60);
   }
 
-  async function openSegment(i) {
-    if (i < 0 || i >= segments.length) return;
-    const seg = segments[i];
+  async function openGroup(i) {
+    if (i < 0 || i >= groups.length) return;
+    const g = groups[i];
     curIndex = i;
-    mode = 'detail';
+    view = 'detail';
     let data;
-    try { data = await API.segmentPhotos(seg.id); } catch (e) { App().toast(e.message, true); return; }
+    try { data = await API.groupPhotos(mode, step, g.id); } catch (e) { App().toast(e.message, true); return; }
     const photos = data.photos || [];
     bindLightboxList(photos);
-    renderHeader(seg, i);
-    renderGroups($('#segDetailBody'), groupsFor(seg, photos));
-    renderMap(seg);
+    renderHeader(g, i);
+    renderBlocks($('#segDetailBody'), groupsFor(g, photos));
+    renderMap(photos);
     panes('detail');
     $('#segDetailBody').scrollTop = 0;
   }
@@ -296,33 +316,75 @@ window.MomentsView = (function () {
     $('#momentsToolbar').classList.toggle('hidden', !(active === 'rail' || active === 'whole'));
   }
 
-  function setToggle(active) {
-    document.querySelectorAll('#segToggle .seg-toggle-btn')
-      .forEach((b) => b.classList.toggle('active', b.dataset.mode === active));
+  function setDisplayToggle(active) {
+    document.querySelectorAll('#viewToggle .seg-toggle-btn')
+      .forEach((b) => b.classList.toggle('active', b.dataset.viewMode === active));
     const hint = $('#momentsHint');
-    if (hint) hint.textContent = active === 'whole'
-      ? `Whole project · ${total} photos`
-      : `${segments.length} moment${segments.length !== 1 ? 's' : ''} · ${total} photos`;
+    if (hint) hint.textContent = `${groups.length} group${groups.length !== 1 ? 's' : ''} · ${total} photos · ${tierName}`;
   }
 
-  function wireToggle() {
-    if (wired) return;
-    wired = true;
-    document.querySelectorAll('#segToggle .seg-toggle-btn').forEach((b) => {
-      b.addEventListener('click', () => { overview = b.dataset.mode; enterOverview(false); });
+  function setModeToggle() {
+    document.querySelectorAll('#modeToggle .seg-toggle-btn')
+      .forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  }
+
+  /* ------------------------------ tier ticks ------------------------------- */
+
+  function nearestTier(s) {
+    const x = (s / steps) * (tiers.length - 1);
+    return tiers[Math.round(x)];
+  }
+
+  function renderTicks() {
+    const host = $('#granTicks');
+    if (!host) return;
+    host.innerHTML = '';
+    tiers.forEach((name, idx) => {
+      const t = el('span', 'gran-tick', App().esc(name));
+      t.style.left = `${(idx / (tiers.length - 1)) * 100}%`;
+      host.appendChild(t);
     });
   }
 
-  // Restore the user's saved map-rail width (a no-op until they've dragged once).
+  function syncTierLabel() {
+    tierName = nearestTier(step);
+    const lbl = $('#granTier');
+    if (lbl) lbl.textContent = tierName;
+  }
+
+  /* -------------------------------- wiring --------------------------------- */
+
+  function wireToolbar() {
+    if (wired) return;
+    wired = true;
+
+    document.querySelectorAll('#modeToggle .seg-toggle-btn').forEach((b) => {
+      b.addEventListener('click', () => { if (mode !== b.dataset.mode) { mode = b.dataset.mode; setModeToggle(); reloadGroups(); } });
+    });
+    document.querySelectorAll('#viewToggle .seg-toggle-btn').forEach((b) => {
+      b.addEventListener('click', () => { display = b.dataset.viewMode; enterOverview(false); });
+    });
+
+    const slider = $('#granSlider');
+    if (slider) {
+      slider.max = String(steps);
+      slider.value = String(step);
+      slider.addEventListener('input', () => { step = Number(slider.value); syncTierLabel(); });
+      slider.addEventListener('change', () => { step = Number(slider.value); reloadGroups(); });
+    }
+    const kw = $('#kwBtn');
+    if (kw) kw.addEventListener('click', () => { if (window.Keywords) window.Keywords.toggle(); });
+
+    renderTicks();
+    syncTierLabel();
+  }
+
   function applySideWidth() {
     const side = $('#segDetailSide');
     const w = parseInt(localStorage.getItem(SIDE_W_KEY), 10);
     side.style.flexBasis = w >= 280 ? w + 'px' : '';
   }
 
-  // Drag the handle between photos and the map rail to resize the map. The rail is
-  // on the right, so dragging left widens it; clamped to leave room for the photos.
-  // Width persists in localStorage; double-click resets to the default.
   function wireResizer() {
     if (resizerWired) return;
     const rz = $('#sdResizer');
@@ -330,11 +392,10 @@ window.MomentsView = (function () {
     if (!rz || !side) return;
     resizerWired = true;
     let startX = 0, startW = 0, dragging = false;
-
     const onMove = (e) => {
       if (!dragging) return;
       const splitW = $('#segDetailSplit').getBoundingClientRect().width;
-      const maxW = Math.max(320, splitW - 420); // keep at least ~420px for the photos
+      const maxW = Math.max(320, splitW - 420);
       const w = Math.max(280, Math.min(maxW, startW - (e.clientX - startX)));
       side.style.flexBasis = w + 'px';
       if (sdMap) sdMap.invalidateSize({ animate: false });
@@ -349,13 +410,9 @@ window.MomentsView = (function () {
       if (sdMap) setTimeout(() => sdMap.invalidateSize(), 50);
     };
     rz.addEventListener('pointerdown', (e) => {
-      dragging = true;
-      startX = e.clientX;
-      startW = side.getBoundingClientRect().width;
-      rz.classList.add('dragging');
-      document.body.style.userSelect = 'none';
-      rz.setPointerCapture(e.pointerId);
-      e.preventDefault();
+      dragging = true; startX = e.clientX; startW = side.getBoundingClientRect().width;
+      rz.classList.add('dragging'); document.body.style.userSelect = 'none';
+      rz.setPointerCapture(e.pointerId); e.preventDefault();
     });
     rz.addEventListener('pointermove', onMove);
     rz.addEventListener('pointerup', onUp);
@@ -368,65 +425,82 @@ window.MomentsView = (function () {
 
   /* -------------------------------- loaders -------------------------------- */
 
-  async function loadSegments() {
+  async function loadCards() {
+    const seq = ++loadSeq;
     try {
-      const r = await API.segments();
-      segments = r.segments || [];
-      home = r.home || null;
-      total = segments.reduce((a, s) => a + s.photoCount, 0);
-      loaded = true;
-    } catch (e) { App().toast(e.message, true); }
+      const r = await API.groups(mode, step);
+      if (seq !== loadSeq) return false; // a newer load superseded this one
+      groups = r.groups || [];
+      total = r.total || groups.reduce((a, g) => a + g.photoCount, 0);
+      steps = r.steps || steps;
+      tiers = (r.tiers && r.tiers.length) ? r.tiers : tiers;
+      tierName = (r.scale && r.scale.tier) || nearestTier(step);
+      const slider = $('#granSlider');
+      if (slider) slider.max = String(steps);
+      renderTicks();
+      return true;
+    } catch (e) { App().toast(e.message, true); return false; }
   }
 
   async function loadWhole() {
+    const seq = loadSeq;
     try {
-      const r = await API.segmentsFull();
-      wholeSegments = r.segments || [];
-      wholeLoaded = true;
-    } catch (e) { App().toast(e.message, true); }
+      const r = await API.groups(mode, step, null, true);
+      if (seq !== loadSeq) return false;
+      wholeGroups = r.groups || [];
+      return true;
+    } catch (e) { App().toast(e.message, true); return false; }
   }
 
   function enterGrid(reload) {
-    mode = 'grid';
+    view = 'grid';
     if (sdMap) { sdMap.remove(); sdMap = null; }
     panes('grid');
     if (reload || !gridLoaded) { App().resetTimeline(); gridLoaded = true; }
   }
 
-  async function enterOverview(reload) {
-    if (reload || !loaded) await loadSegments();
-    const ov = overview || (total <= WHOLE_MAX ? 'whole' : 'grouped');
+  async function enterOverview(forceReload) {
+    if (forceReload || !groups.length) { if (!await loadCards()) return; }
+    const ov = display || (total <= WHOLE_MAX ? 'whole' : 'grouped');
     if (ov === 'whole') {
-      if (reload || !wholeLoaded) await loadWhole();
-      mode = 'whole';
+      if (!await loadWhole()) return;
+      view = 'whole';
       renderWhole();
-      setToggle('whole');
+      setDisplayToggle('whole');
       panes('whole');
     } else {
-      mode = 'rail';
+      view = 'rail';
       renderRail();
-      setToggle('grouped');
+      setDisplayToggle('grouped');
       panes('rail');
     }
+    setModeToggle();
+  }
+
+  // Mode/scale changed: refetch cards (and the spine if shown) at the new setting.
+  async function reloadGroups() {
+    if (!await loadCards()) return;
+    wholeGroups = [];
+    await enterOverview(false);
   }
 
   /* -------------------------------- public --------------------------------- */
 
   function show() {
-    wireToggle();
+    wireToolbar();
     wireResizer();
     if (App().hasActiveFilter()) return enterGrid(false);
-    if (mode === 'detail' && curIndex >= 0) return panes('detail');
+    if (view === 'detail' && curIndex >= 0) return panes('detail');
     enterOverview(false);
   }
 
   function invalidate() {
-    wireToggle();
-    loaded = false;
-    wholeLoaded = false;
+    wireToolbar();
+    groups = [];
+    wholeGroups = [];
     gridLoaded = false;
     curIndex = -1;
-    if (App().state.view !== 'moments') return; // lazy — show() loads on next visit
+    if (App().state.view !== 'moments') return; // lazy — show() reloads on next visit
     if (App().hasActiveFilter()) enterGrid(true);
     else enterOverview(true);
   }

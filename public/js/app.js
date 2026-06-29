@@ -303,7 +303,6 @@ function switchView(name) {
   if (name !== 'map' && window.MapView && window.MapView.blur) window.MapView.blur();
   if (name === 'moments' && window.MomentsView) window.MomentsView.show();
   if (name === 'map' && window.MapView) window.MapView.show();
-  if (name === 'clusters' && window.Clusters) window.Clusters.show();
   if (name === 'slideshow' && window.Slideshow) window.Slideshow.show();
 }
 
@@ -362,7 +361,7 @@ function refreshAll() {
   loadStats();
   if (window.MomentsView) window.MomentsView.invalidate();
   if (window.MapView) window.MapView.invalidate();
-  if (window.Clusters) window.Clusters.invalidate();
+  if (window.Keywords) window.Keywords.invalidate();
   if (window.Slideshow) window.Slideshow.invalidate();
 }
 
@@ -430,7 +429,7 @@ async function boot() {
   if (window.Projects) window.Projects.setActiveUI(active);
   loadStats();
   const initial = (location.hash || '').replace('#', '');
-  const views = ['moments', 'map', 'clusters', 'slideshow'];
+  const views = ['moments', 'map', 'slideshow'];
   switchView(views.includes(initial) ? initial : 'moments');
 
   const photoParam = new URLSearchParams(location.search).get('photo');

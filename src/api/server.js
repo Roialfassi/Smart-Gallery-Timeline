@@ -13,6 +13,7 @@ const thumbnails = require('../services/thumbnails');
 const { scanDirectory } = require('../services/scanner');
 const { buildJourneys } = require('../services/journeys');
 const segments = require('../services/segments');
+const grouping = require('../services/grouping');
 const clustering = require('../services/clustering');
 const { recommend } = require('../services/recommend');
 const { writeTagsToJpeg } = require('../services/exifwriter');
@@ -319,6 +320,23 @@ function createApp() {
     if (!id) return err(res, 'INVALID_IMAGE_FORMAT', 400, 'A segment id is required');
     const photos = segments.segmentPhotos(req.query, id);
     if (!photos) return err(res, 'PATH_NOT_FOUND', 404, 'Segment not found');
+    res.json({ id, photos });
+  }));
+
+  // --- Unified spatiotemporal groups (the zoomable Timeline view) ---
+  // mode = 'time' | 'spacetime'; step = granularity slider position. ?withPhotos=1
+  // inlines each group's photos for the continuous "spine" view.
+  app.get('/api/groups', wrap((req, res) => {
+    const { mode, step, withPhotos, ...filters } = req.query;
+    const opts = { mode, step };
+    res.json(withPhotos ? grouping.buildGroups(filters, opts) : grouping.listGroups(filters, opts));
+  }));
+
+  app.get('/api/groups/photos', wrap((req, res) => {
+    const { id, mode, step, ...filters } = req.query;
+    if (!id) return err(res, 'INVALID_IMAGE_FORMAT', 400, 'A group id is required');
+    const photos = grouping.groupPhotos(filters, id, { mode, step });
+    if (!photos) return err(res, 'PATH_NOT_FOUND', 404, 'Group not found');
     res.json({ id, photos });
   }));
 

@@ -4,7 +4,7 @@ const { getDb } = require('../db/database');
 const config = require('../config');
 const { dbscan, centroid, haversine } = require('./spatial');
 const { buildFilters } = require('../api/queries');
-const { extractKeywords } = require('./keywords');
+const { placeName } = require('./naming');
 
 /**
  * Spatial DBSCAN clustering with stable IDs (plan/architecture.md Section 8)
@@ -20,20 +20,7 @@ function jaccard(aSet, bSet) {
   return union === 0 ? 0 : inter / union;
 }
 
-function autoName(memberPhotos) {
-  // Most frequent folder keyword among members; fallback to country; else "Area".
-  const counts = new Map();
-  for (const p of memberPhotos) {
-    for (const kw of extractKeywords(p.folder_name)) {
-      counts.set(kw, (counts.get(kw) || 0) + 1);
-    }
-  }
-  let best = null, bestN = 0;
-  for (const [kw, n] of counts) if (n > bestN) { best = kw; bestN = n; }
-  if (best) return best.charAt(0).toUpperCase() + best.slice(1);
-  const cc = memberPhotos.find((p) => p.country_code)?.country_code;
-  return cc ? `Area (${cc})` : 'Area';
-}
+const autoName = placeName; // shared place labelling (see services/naming.js)
 
 /**
  * Compute (and persist with stable IDs) spatial clusters at a given radius.
